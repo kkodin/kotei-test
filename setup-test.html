@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>テスト用フォルダの場所を調べる</title>
+<style>
+  body { font-family: system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif; font-size: 17px; margin: 24px; color: #222; max-width: 960px; }
+  h1 { font-size: 22px; }
+  button { font-size: 17px; padding: 10px 20px; min-height: 44px; border-radius: 8px; border: 1px solid #1a5fb4; background: #e7f1fb; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+  th { background: #f0efec; }
+  code { font-size: 14px; word-break: break-all; }
+  .ng { color: #b00020; font-weight: 600; }
+  .ok { color: #1b7f3b; font-weight: 600; }
+  .note { background: #f9eeda; padding: 10px 14px; border-radius: 8px; }
+  textarea { width: 100%; height: 220px; font-size: 13px; font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>テスト用フォルダの場所を調べる（読むだけ）</h1>
+<p class="note">このページは OneDrive に何も書き込みません。ログインしたあと、<b>社内共有フォルダ\99_テスト</b> の中のフォルダを探して、その「場所の番号」（driveId・itemId）を表示するだけです。</p>
+<p><button id="bLogin">Microsoft でログイン</button> <button id="bRun" disabled>調べる</button></p>
+<p id="who"></p>
+<table>
+  <thead><tr><th>フォルダ</th><th>結果</th><th>driveId / itemId</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<h2 style="font-size:18px;margin-top:28px">結果のまとめ（全部を選んでコピーし、Claude に貼り付けてください）</h2>
+<textarea id="out" readonly></textarea>
+
+<script src="lib/msal-browser.min.js"></script>
+<script>
+const CLIENT_ID = "9a4c8447-3e6a-437b-85d0-4662ded35f42";
+const TENANT_ID = "acd238cd-b6aa-4b5a-8056-44ed0177515f";
+const SCOPES = ["User.Read", "Files.ReadWrite.All"];   // ほかのアプリと同じ許可（このページは GET で読むだけ）
+const BASE = "社内共有フォルダ/99_テスト";
+const TARGETS = [
+  { key: "kotei", label: "工程データ（全体工程表・日報・常用日報・部会資料）", path: BASE + "/12_工程/工程データ" },
+  { key: "kikai", label: "稼働データ（自社機械稼働表）", path: BASE + "/03_自社機械稼働表/稼働データ" },
+  { key: "haichi", label: "配置表データ（配置表閲覧版・日報の取り込み）", path: BASE + "/06_配置表/配置表データ" }
+];
+const $ = id => document.getElementById(id);
+const msalApp = new msal.PublicClientApplication({
+  auth: { clientId: CLIENT_ID, authority: "https://login.microsoftonline.com/" + TENANT_ID, redirectUri: new URL("./", location.href).href },
+  cache: { cacheLocation: "localStorage" }
+});
+async function token() {
+  const account = msalApp.getActiveAccount();
+  try { return (await msalApp.acquireTokenSilent({ scopes: SCOPES, account })).accessToken; }
+  catch (e) { await msalApp.acquireTokenRedirect({ scopes: SCOPES, account }); }
+}
+const enc = p => p.split("/").map(encodeURIComponent).join("/");
+async function run() {
+  $("rows").innerHTML = "";
+  const lines = ["調べた日時: " + new Date().toLocaleString("ja-JP")];
+  for (const t of TARGETS) {
+    const tr = document.createElement("tr");
+    let result, ids = "";
+    try {
+      const res = await fetch("https://graph.microsoft.com/v1.0/me/drive/root:/" + enc(t.path) + "?$select=id,name,folder,parentReference",
+        { headers: { Authorization: "Bearer " + await token() } });
+      if (res.status === 404) { result = '<span class="ng">見つかりません</span>'; lines.push(t.key + ": 見つかりません (" + t.path + ")"); }
+      else if (!res.ok) { result = '<span class="ng">エラー ' + res.status + '</span>'; lines.push(t.key + ": エラー " + res.status); }
+      else {
+        const j = await res.json();
+        const n = j.folder ? j.folder.childCount : "?";
+        result = '<span class="ok">見つかりました</span>（中のファイル・フォルダ ' + n + ' 個）';
+        ids = "<code>" + j.parentReference.driveId + "</code><br><code>" + j.id + "</code>";
+        lines.push(t.key + ": driveId=" + j.parentReference.driveId + " itemId=" + j.id + " 中身=" + n);
+      }
+    } catch (e) { result = '<span class="ng">' + e.message + '</span>'; lines.push(t.key + ": " + e.message); }
+    tr.innerHTML = "<td>" + t.label + "<br><code>" + t.path + "</code></td><td>" + result + "</td><td>" + ids + "</td>";
+    $("rows").appendChild(tr);
+  }
+  $("out").value = lines.join("\n");
+}
+(async () => {
+  await msalApp.initialize();
+  const r = await msalApp.handleRedirectPromise();
+  if (r && r.account) msalApp.setActiveAccount(r.account);
+  const acc = msalApp.getActiveAccount() || msalApp.getAllAccounts()[0];
+  if (acc) { msalApp.setActiveAccount(acc); $("who").textContent = "ログイン中: " + acc.name; $("bRun").disabled = false; $("bLogin").disabled = true; }
+  $("bLogin").onclick = () => msalApp.loginRedirect({ scopes: SCOPES, redirectStartPage: location.href });
+  $("bRun").onclick = run;
+})();
+</script>
+</body>
+</html>
