@@ -46,7 +46,7 @@ async function docsFor(days) {
 // その日の行（だれが書いたか・報告したか）
 function evsOn(docs, k) {
   const out = [];
-  docs.forEach(doc => { if (monthOf(k) !== doc.月 && doc.月) return; const d = (doc.日 || {})[k]; (d && d.行 || []).forEach(r => out.push({ k, who: doc.名前, r, rep: !!d.報告, mine: !r.詳細 && !r.書式 && nk(doc.名前) === nk(S.me.name) }));   // 詳細日報で書いた行は、ここでは動かさない・消さない });
+  docs.forEach(doc => { if (monthOf(k) !== doc.月 && doc.月) return; const d = (doc.日 || {})[k]; (d && d.行 || []).forEach(r => out.push({ k, who: doc.名前, r, rep: !!d.報告, mine: !r.詳細 && !r.書式 && nk(doc.名前) === nk(S.me.name) })); });   // 詳細日報で書いた行は、ここでは動かさない・消さない
   return out;
 }
 // 行に出てくる人（記入者が参加していれば記入者・報告の参加者。報告が無ければ予定の参加者）
@@ -212,7 +212,7 @@ function bindCal(evs) {
     const st = e.target.closest("[data-site]");
     if (st) { const [p, c] = st.dataset.site.split("|"); return openSite(p, c); }
     const nw = e.target.closest("[data-new]");
-    if (nw) { const [k, n] = nw.dataset.new.split("|"); editEv(k, null, { person: n }); }
+    if (nw) { const [k, n] = nw.dataset.new.split("|"); newReport(k, n); }
   };
   bindDrag(box);
 }
@@ -540,6 +540,14 @@ async function openDay(k, who) {
   }
   if (xs.length) return showEv(xs[0]);
   toast(`${who} さんの ${fmtDay(k)} の日報はありません`);
+}
+// 空いたます目・「＋ 予定・報告を登録」：日報を新しく書く（2026-11-16 ユーザー：自分の空いた所を押すと詳細日報）。
+// 自分（または人を決めないます目）なら、PC・タブレットは詳細日報の用紙（現場名を上の欄に入れる）、スマホは前のスケジュール登録の窓。
+// 他の人の日報は書けない（見るだけ）ので知らせる
+function newReport(k, n) {
+  if (n && nk(n) !== nk(S.me.name)) { toast(`${n} さんの ${fmtDay(k)} の日報はまだありません。他の人の日報は、その人が書きます（同じ現場に行った人は、その人の日報を直せます）`, 6000); return; }
+  if (window.innerWidth >= 760) { location.href = detailUrl("", "", k); return; }
+  editEv(k, null, n ? { person: n } : undefined);
 }
 function goWeek() { closeDlg(); S.view = "cal"; CAL.mode = "week"; calSave(); render(); }
 $("bWeek").onclick = goWeek;

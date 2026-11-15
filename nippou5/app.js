@@ -1030,7 +1030,7 @@ function bind() {
   $("bNext").onclick = () => setDay(S.view === "cal" ? calStep(1) : monthView() ? monthStep(1) : dayAdd(S.day, 1));
   $("bToday").onclick = () => setDay(todayKey());
   $("inDay").onchange = () => { if ($("inDay").value) setDay($("inDay").value); };
-  $("bAdd").onclick = () => { if (S.view === "cal") return editEv(S.day, null); if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
+  $("bAdd").onclick = () => { if (S.view === "cal") return newReport(S.day, S.me.name); if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
   $("bSite").onclick = openApps;
   $("bReport").onclick = report;
   $("bMe").onclick = async () => { const n = await askMe(S.me.acct, false); if (n) setMe(n); };
