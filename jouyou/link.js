@@ -16,9 +16,12 @@ async function linkGo(p) {
   try { await Promise.race([sync(), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   location.href = linkUrl(p);
 }
-$("goNippou").onclick = () => linkGo("nippou4/?stay=1");
+$("goNippou").onclick = () => linkGo("nippou5/?stay=1");
 $("goKotei").onclick = () => linkGo("");
 $("goKikai").onclick = () => linkGo("kikai/");
+$("calTop").onclick = () => linkGo("nippou5/?stay=1");   // 「日を選ぶ」から入口（1週間の表）へ（2026-11-15 ユーザー）
+// 用紙の上の「現場ごと／記入者ごと」と左右の ◀▶ はやめた（2026-11-15 ユーザー：記入者ごとで戻れなくなる）。前に記入者ごとを選んでいた端末も現場ごとに戻す
+if (UI.detailView === "writer") { UI.detailView = "site"; saveUI(); }
 
 /* ---------- 読む・書く ---------- */
 const demoNippou = () => { try { return JSON.parse(localStorage.getItem("nippou_demo_v4")) || {}; } catch (e) { return {}; } };
@@ -111,7 +114,7 @@ async function linkPull(s, k) {
   if (site() !== s || UI.day !== k || !canEdit() || busyEditing()) return;
   const got = [];
   docs.forEach(doc => (((doc.日 || {})[k] || {}).行 || []).forEach(r => {
-    if (!r.行先 || !sameSite(s, r) || /^(jouyou|haichi):/.test(String(r.取込 || "")) || r.詳細) return;
+    if (!r.行先 || !sameSite(s, r) || /^(jouyou|haichi):/.test(String(r.取込 || "")) || r.詳細 || r.書式) return;   // 書式のある行は、この用紙で書いた日報そのもの
     const h = parseInt(String(r.始め || "").split(":")[0], 10), sh = r.区分 === "夜" || (!r.区分 && (h >= 17 || h < 5)) ? "夜" : "昼";
     const rep = r.人 || [], who = [...(r.本人 !== false && doc.名前 ? [doc.名前] : []), ...(rep.length ? rep : ((r.予定 || {}).人 || []))];
     who.forEach(n => got.push({ t: "人", key: `人|${nk(n)}|${sh}`, n, sh }));
@@ -280,8 +283,17 @@ setInterval(() => { if (!document.hidden && UI.tab !== "master" && !busyEditing(
 /* ---------- 工事日報の入り口から（?open=entry&code=&name=&d=） ---------- */
 function linkEntry(n) {
   const q = new URLSearchParams(location.search); if (q.get("open") !== "entry") return;
+  if (!q.get("code") && !q.get("name")) {   // 現場を決めずに開く（今日の日報でまだ現場が無いとき）：用紙の上の現場名の欄に入れる
+    history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
+    UI.site = null; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll();
+    setTimeout(() => { const i = $("hSiteIn"); if (i) i.focus(); }, 300); return;
+  }
   const code = q.get("code"), name = q.get("name"), x = DB.現場.find(v => code && String(v.コード) === code) || (name && bestOf(DB.現場, v => siteScore(v, name))[0]);
-  if (!x) { if ((n || 0) < 6) setTimeout(() => linkEntry((n || 0) + 1), 2000); return; }
+  if (!x) {   // 現場一覧を読む前かもしれないので、しばらく待ってから探し直す。見つからなければ知らせる
+    if ((n || 0) < 6) setTimeout(() => linkEntry((n || 0) + 1), 2000);
+    else toast(`「${name || code}」は詳細日報の現場にまだありません。「現場名を選ぶ」か「現場・名簿」で現場を足してから開いてください`, 8000);
+    return;
+  }
   history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
   UI.gen = x.元請id; UI.site = x.id; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll(); askForm();
 }

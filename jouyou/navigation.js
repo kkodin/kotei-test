@@ -205,5 +205,5 @@ function detailInit() {
     const b = e.target.closest("[data-select-site]"); if (!b) return;
     UI.detailView = "site"; closeDlg($("dSite")); detailSelectSite(b.dataset.selectSite);
   };
-  if (!site()) setTimeout(detailOpenSites, 0);
+  // 開いたときに「現場名を選ぶ」を自動で出すのはやめた（2026-11-15 ユーザー：入口の工事日報から現場・日を決めて開く）。現場名の欄を押せば今までどおり選べる
 }

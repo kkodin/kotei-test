@@ -1643,7 +1643,9 @@ const store = {
 };
 function httpErr(res, what) { return Object.assign(new Error(what + " " + res.status), { status: res.status }); }
 const fileOf = id => "現場_" + id + ".json";
-const docOf = s => JSON.stringify({ 形式: "常用日報の現場", 版: 1, 元請名: (DB.元請.find(g => g.id === s.元請id) || {}).名前 || "", 現場: s });
+// 共有に出す現場の中身（記入者ごとのファイルへ移した日は writer.js が外す）
+let siteForShare = s => s;
+const docOf = s => JSON.stringify({ 形式: "常用日報の現場", 版: 1, 元請名: (DB.元請.find(g => g.id === s.元請id) || {}).名前 || "", 現場: siteForShare(s) });
 // 共有に出す現場：日報か、消した日か、直した決まりがあるもの（マスタから作っただけの空の現場は出さない）
 const shareable = s => Object.keys(s.日).length || Object.keys(s.消した日).length || s.設定更新;
 // このブラウザの現場（a）と共有の現場（b）を合わせる

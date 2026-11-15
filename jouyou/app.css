@@ -433,3 +433,16 @@ form.nofill { display: contents; }
 .kpI.no { border-color: #ccc; background: #f3f3f3; color: #777; }
 .kpI .kpN small { margin-left: 4px; color: #777; }
 .kpI button.on { background: #1f4e79; color: #fff; }
+
+/* 用紙の上の表示の切り替え（現場ごと／記入者ごと）と左右の ◀▶ は出さない。用紙を広く見せる（2026-11-15 ユーザー） */
+.paper-nav { display: none !important; }
+
+/* 記入者ごとの日報（2026-11-15 段階2）：現場名の欄・他の人の日報の帯 */
+#hSiteIn { width: 100%; border: none; background: transparent; font: inherit; font-weight: bold; text-align: center; padding: 4px; }
+#hSiteIn:focus { outline: 2px solid #4a90d9; background: #fff; }
+#hSiteIn:placeholder-shown { background: #fff8e1; }
+.wrbar { margin: 6px auto; max-width: 1226px; padding: 6px 10px; background: #eef4fb; border: 1px solid #c8daee; border-radius: 6px; font-size: 13px; }
+.wrbar button { margin-left: 6px; }
+
+.sumwarn { margin: 8px 0; padding: 8px 12px; background: #fde8e6; border: 1px solid #e0a39c; border-radius: 6px; color: #8a1f12; font-size: 13px; }
+.sumwarn ul { margin: 4px 0 0; padding-left: 20px; }
