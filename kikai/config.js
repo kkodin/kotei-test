@@ -6,8 +6,8 @@ window.KIKAI_CONFIG = {
   clientId: "9a4c8447-3e6a-437b-85d0-4662ded35f42",   // アプリケーション (クライアント) ID（全体工程表）
   tenantId: "acd238cd-b6aa-4b5a-8056-44ed0177515f",   // ディレクトリ (テナント) ID
   folder: {
-    driveId: "TEST_DRIVE_NOT_SET",
-    itemId: "TEST_ITEM_NOT_SET",   // 稼働データ フォルダ（2026-10-24 北澤さんのサインインで調べた）
-    path: "社内共有フォルダ/03_自社機械稼働表/稼働データ"
+    driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
+    itemId: "01NJOWDEUDRFP5TI3LLZFYT6PND6BLN6VQ",   // 99_テスト の 稼働データ フォルダ（2026-11-15 setup-test.html で調べた）
+    path: "社内共有フォルダ/99_テスト/03_自社機械稼働表/稼働データ"
   }
 };

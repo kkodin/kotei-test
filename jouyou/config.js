@@ -7,11 +7,11 @@ window.JOUYOU_CONFIG = {
   clientId: "9a4c8447-3e6a-437b-85d0-4662ded35f42",
   tenantId: "acd238cd-b6aa-4b5a-8056-44ed0177515f",
   kotei: {
-    driveId: "TEST_DRIVE_NOT_SET",
-    itemId: "TEST_ITEM_NOT_SET"
+    driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
+    itemId: "01NJOWDEQCV6JKGWOI4RG2U3DMX43SQ56D"
   },
   kikai: {
-    driveId: "TEST_DRIVE_NOT_SET",
-    itemId: "TEST_ITEM_NOT_SET"
+    driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
+    itemId: "01NJOWDEUDRFP5TI3LLZFYT6PND6BLN6VQ"
   }
 };
