@@ -126,7 +126,7 @@ function ensureDay() {
 // 中身のある日か（空の日は保存しない）
 function hasData(d) {
   if (!d) return false;
-  if (d.天気 || d.気温 || d.備考 || d.サイン) return true;
+  if (d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
   return [...d.上, ...d.下, ...(d.外注 || []), ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
 }
 function tidy(d) {
@@ -852,6 +852,7 @@ function buildSheet() {
           <td><span class="tmp"><input id="hTmp" type="text" inputmode="decimal" autocomplete="off" title="気温（数字だけ。マイナスと小数点も可）">℃</span></td></tr>
     </table>
     <div id="tanList" class="clist" hidden></div>
+    <div id="chkBar"></div>
     <div class="mid">
       <div class="left sec" data-key="up">
         <div class="secT"><b>作業予定・完了報告</b><span class="cnt" id="cntUp"></span></div>
@@ -863,6 +864,7 @@ function buildSheet() {
       <div class="secT"><b>作業員・使用機材・材料</b><span class="cnt" id="cntDn"></span></div>
       <div id="g_dn"></div>
     </div>
+    <div class="low" id="kikaiPlan"></div>
     <div class="low sec" data-key="gai">
       <div class="secT"><b>外注</b><span class="note">外注として来た人（会社に業者名）。作業員の欄と同じ日に重ねられません（昼夜がちがえば可）</span><span class="cnt" id="cntGai"></span></div>
       <div id="g_gai"></div>

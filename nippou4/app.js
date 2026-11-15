@@ -699,7 +699,7 @@ function toDetail(r) {
   const x = { 日: S.day, 行先: r.行先, コード: r.コード || "", 始め: r.始め || "", 終わり: r.終わり || "", 作業: String(r.作業 || "").split(/\r?\n/).map(v => v.trim()).filter(Boolean), 人: r.人 || [], 外注: r.外注 || [], 機械: r.機械 || [], 書いた人: S.me.name, いつ: Date.now() };
   try { localStorage.setItem("nippou_to_jouyou", JSON.stringify(x)); } catch (e) { }
   const url = new URL("../jouyou/?from=nippou" + (DEMO ? "&demo" : ""), location.href).href;
-  if (window.innerWidth < 760 || navigator.standalone) location.href = url; else window.open(url, "_blank");
+  location.href = url;   // 同じ窓で（2026-11-03 ユーザー）
 }
 
 /* ---------- 現場別日報（別ウィンドウ ?site=現場名&code=コード&d=日）
@@ -723,7 +723,7 @@ function openSite(place, code) {
   const u = new URL("./", location.href);
   u.searchParams.set("site", place); if (code) u.searchParams.set("code", code); u.searchParams.set("d", S.day);
   if (DEMO) u.searchParams.set("demo", ""); if (GUEST_DEMO) u.searchParams.set("guest", "");
-  window.open(u.href, "_blank");
+  location.href = u.href;   // 同じ窓で（2026-11-03 ユーザー）
 }
 // 「現場別詳細工程」：この日の現場が1つならそれ、ほかは選ぶ
 // 「現場別詳細工程」（2026-11-02 ユーザー：工程が開くと思った。全体工程表・自社機械稼働表・日報（現場別／人別）を開けるように）
@@ -740,7 +740,7 @@ function openApps() {
     const b = e.target.closest("[data-app]"); if (!b) return; const a = b.dataset.app;
     if (a === "site") return chooseSite();
     if (a === "person") return choosePerson();
-    closeDlg(); window.open(url(a === "kotei" ? "" : a + "/"), "_blank");
+    closeDlg(); location.href = url(a === "kotei" ? "" : a + "/");   // 同じ窓で（2026-11-03 ユーザー）
   };
 }
 // 日報（人別）：人を選んで、その人の月の一覧
@@ -1080,6 +1080,7 @@ async function start() {
   if (!name) name = await askMe(S.me.acctName || S.me.acct, true);
   rememberMe(name);
   await setDay(S.day);
+  if (await entryJump()) return;   // 常用の現場の人は詳細日報を開く
   if (!standalone() && !localStorage.getItem("nippou_install_told") && window.innerWidth < 1100) { try { localStorage.setItem("nippou_install_told", "1"); } catch (e) { } setTimeout(installGuide, 800); }
 }
 

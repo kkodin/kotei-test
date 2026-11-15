@@ -2,7 +2,7 @@
   "name": "工事日報",
   "short_name": "工事日報",
   "start_url": "./",
-  "scope": "./",
+  "scope": "../",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1f3a5f",

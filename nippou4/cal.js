@@ -38,12 +38,13 @@ function calStep(n) {
 async function docsFor(days) {
   const ms = [...new Set(days.map(monthOf))];
   await Promise.all(ms.map(m => loadMonth(m)));
-  return (await Promise.all(ms.map(m => monthDocs(m).catch(() => [])))).flat();
+  const real = (await Promise.all(ms.map(m => monthDocs(m).catch(() => [])))).flat();
+  return [...real, ...await linkDocs(ms, real).catch(() => [])];   // 詳細日報に書いた人を重ねる
 }
 // その日の行（だれが書いたか・報告したか）
 function evsOn(docs, k) {
   const out = [];
-  docs.forEach(doc => { if (monthOf(k) !== doc.月 && doc.月) return; const d = (doc.日 || {})[k]; (d && d.行 || []).forEach(r => out.push({ k, who: doc.名前, r, rep: !!d.報告, mine: nk(doc.名前) === nk(S.me.name) })); });
+  docs.forEach(doc => { if (monthOf(k) !== doc.月 && doc.月) return; const d = (doc.日 || {})[k]; (d && d.行 || []).forEach(r => out.push({ k, who: doc.名前, r, rep: !!d.報告, mine: !r.詳細 && nk(doc.名前) === nk(S.me.name) })); });
   return out;
 }
 // 行に出てくる人（記入者が参加していれば記入者・報告の参加者。報告が無ければ予定の参加者）
@@ -191,7 +192,7 @@ function bindCal(evs) {
   const box = $("all");
   box.onclick = e => {
     const ev = e.target.closest("[data-ev]");
-    if (ev) { const [who, k, id] = ev.dataset.ev.split("|"), x = evs.get(k).find(y => nk(y.who) === nk(who) && y.r.id === id); if (x) showEv(x); return; }
+    if (ev) { const [who, k, id] = ev.dataset.ev.split("|"), x = evs.get(k).find(y => nk(y.who) === nk(who) && y.r.id === id); if (x && x.r.詳細) return openDetail(x); if (x) showEv(x); return; }
     const pv = e.target.closest("[data-plan]");
     if (pv) { const [k, place, code] = pv.dataset.plan.split("|"); return editEv(k, null, { place, code }); }
     const dd = e.target.closest("[data-day]");

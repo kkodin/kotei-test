@@ -364,6 +364,10 @@ table.dift td.dact button { min-height: 32px; padding: 2px 8px; margin: 0 4px 4p
 table.list.pol td { vertical-align: middle; } table.list.pol select, .polall select { font-size: calc(14px * var(--fs)); padding: 4px 6px; }
 table.list.askt td { font-size: calc(13px * var(--fs)); } table.list.askt .ch3 { white-space: nowrap; } table.list.askt .ck { display: block; }
 
+/* 詳細日報の記録があることの知らせ */
+.linkmsg { width: 100%; padding: 6px 10px; background: #eef4fb; border: 1px solid #c8daee; border-radius: 8px; font-size: calc(14px * var(--fs)); color: var(--ink); }
+.linkmsg button { min-height: 32px; padding: 2px 10px; margin-left: 8px; }
+
 .rc-table .rc-option { display: flex; gap: 6px; align-items: start; padding: 8px; border: 1px solid #d8e0e8; border-radius: 5px; min-height: 60px; cursor: pointer; }
 .rc-table .rc-option:has(input:checked) { background: #e8f3ff; border-color: #367ab0; }
 .rc-table .different { background: #fff5e5; }
