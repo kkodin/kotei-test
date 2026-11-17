@@ -248,6 +248,11 @@ function createGrid(opt) {
     place();
   }
   listBox.addEventListener("mousedown", e => { const d = e.target.closest("[data-i]"); if (d) { e.preventDefault(); pickList(+d.dataset.i); } });
+  // 候補の一覧（ドロップダウン）は、一覧と ▾ の外を押したとき・ほかのウィンドウへ移ったときに閉じる（何も選ばない）。
+  // 2026-11-17 ユーザー：開いて何も選ばずにほかの所を押しても閉じなかった（共通ルール：必ず読むこと.txt）
+  document.addEventListener("pointerdown", e => { if (st.list && !listBox.contains(e.target) && !dd.contains(e.target)) hideList(); }, true);
+  window.addEventListener("blur", () => { if (st.list) hideList(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && st.list) hideList(); });
 
   /* ---------- コピー・貼り付け（タブ区切り。Excel と行き来できる） ---------- */
   function selText() {
