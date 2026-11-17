@@ -28,12 +28,14 @@ window.HX = window.HX || {};
   HX.go = (id, query) => { location.href = HX.appUrl(id, query); };   // 同じ窓で（2026-11-03 ユーザー）
   HX.renderApps = function (el, opt) {
     const o = opt || {}, cur = HX.here(), skip = new Set([cur && cur.id, ...(o.skip || [])]);
-    el.innerHTML = HX.APPS.filter(a => !skip.has(a.id)).map(a => `<button type="button" class="${o.cls || "sub"}" data-hx-app="${a.id}" title="${a.title}">${a.name}</button>`).join("");
+    // only：出すアプリをこの順で（2026-11-17 ユーザー：工程管理のアプリには 工事日報・全体工程・機械予定 の3つ）。<nav data-hx-apps="nippou,kotei,kikai">
+    const list = o.only ? o.only.map(id => HX.APPS.find(a => a.id === id)).filter(Boolean) : HX.APPS;
+    el.innerHTML = list.filter(a => !skip.has(a.id)).map(a => `<button type="button" class="${o.cls || "sub"}" data-hx-app="${a.id}" title="${a.title}">${a.name}</button>`).join("");
     el.onclick = async e => {
       const b = e.target.closest("[data-hx-app]"); if (!b) return;
       if (o.before) { try { await o.before(b.dataset.hxApp); } catch (err) { } }
       HX.go(b.dataset.hxApp);
     };
   };
-  document.addEventListener("DOMContentLoaded", () => document.querySelectorAll("nav[data-hx-apps]").forEach(el => el.childElementCount || HX.renderApps(el)));
+  document.addEventListener("DOMContentLoaded", () => document.querySelectorAll("nav[data-hx-apps]").forEach(el => { const v = el.getAttribute("data-hx-apps"); el.childElementCount || HX.renderApps(el, v ? { only: v.split(",").map(x => x.trim()) } : undefined); }));
 })(window.HX);

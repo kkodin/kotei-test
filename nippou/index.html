@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="工事日報">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611171819">
+<link rel="stylesheet" href="app.css?v=202611171957">
 </head>
 <body>
 <header id="top">
@@ -25,6 +25,8 @@
   <button id="bWeek" class="wkbtn" title="1週間の表に戻る">1週間</button>
   <button id="bTodayRep" class="todayrep" title="自分の今日の日報を開く">今日の日報</button>
   <span class="sp"></span>
+  <!-- ほかのアプリへ（同じ窓で切り替え。2026-11-17 ユーザー：工程管理のアプリ全部に 工事日報・全体工程・機械予定） -->
+  <nav data-hx-apps="nippou,kotei,kikai" class="apps" title="ほかのアプリ（同じ窓で開きます）"></nav>
   <span id="sync" class="sync"></span>
   <button id="bMe" class="me" title="名前を選び直す"></button>
 </header>
@@ -46,8 +48,9 @@
 <!-- いつも見えるボタン（2026-11-01 ユーザー：一番下に「現場名(行先)を追加」「現場別詳細工程」。ほかは「…」の中） -->
 <footer id="bar" hidden>
   <button id="bAdd" class="add">＋ 現場名(行先)を追加</button>
-  <button id="bSite" class="sub">現場別詳細工程</button>
-  <button id="bReport" class="go">報告する</button>
+  <!-- 「現場別詳細工程」「報告する」は 2026-11-17 ユーザーの指定で消した（ほかのアプリへは上の移動ボタン、報告は詳細日報で書く） -->
+  <button id="bSite" class="sub" hidden>現場別詳細工程</button>
+  <button id="bReport" class="go" hidden>報告する</button>
   <button id="bMore" class="more" aria-label="ほかの機能">…</button>
 </footer>
 
@@ -65,7 +68,7 @@
   <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
   <button data-m="me">名前を選び直す</button>
   <button data-m="find" id="mFind" hidden>日報のフォルダを調べる（管理者）</button>
-  <span class="ver">Vr005 11/17 18:19（テスト）</span>
+  <span class="ver">Vr005 11/17 19:57（テスト）</span>
 </div>
 
 <dialog id="dlg"><div id="dlgBody"></div></dialog>
@@ -73,17 +76,17 @@
 
 <!-- 共通の部品（設定・サインイン・アプリの行き来・マスタ。2026-11-16 開発環境の整理） -->
 <script src="../common/lib/msal-browser.min.js"></script>
-<script src="../common/config.js?v=202611171819"></script>
-<script src="../common/auth.js?v=202611171819"></script>
-<script src="../common/apps.js?v=202611171819"></script>
-<script src="../common/master.js?v=202611171819"></script>
-<script src="app.js?v=202611171819"></script>
-<script src="imp.js?v=202611171819"></script>
-<script src="kuro.js?v=202611171819"></script>
-<script src="haichi.js?v=202611171819"></script>
-<script src="diff.js?v=202611171819"></script>
-<script src="link.js?v=202611171819"></script>
-<script src="reconcile.js?v=202611171819"></script>
-<script src="cal.js?v=202611171819"></script>
+<script src="../common/config.js?v=202611171957"></script>
+<script src="../common/auth.js?v=202611171957"></script>
+<script src="../common/apps.js?v=202611171957"></script>
+<script src="../common/master.js?v=202611171957"></script>
+<script src="app.js?v=202611171957"></script>
+<script src="imp.js?v=202611171957"></script>
+<script src="kuro.js?v=202611171957"></script>
+<script src="haichi.js?v=202611171957"></script>
+<script src="diff.js?v=202611171957"></script>
+<script src="link.js?v=202611171957"></script>
+<script src="reconcile.js?v=202611171957"></script>
+<script src="cal.js?v=202611171957"></script>
 </body>
 </html>

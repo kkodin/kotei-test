@@ -475,9 +475,9 @@ function render() {
   $("bMe").textContent = "👤 " + (S.me.name || "名前");
   const mc = document.querySelector('#menu [data-m="cards"]'); if (mc) mc.textContent = `${S.me.name || ""} の日報（カードで書く）`;
   $("bAdd").textContent = S.view === "site" ? "＋ この現場に書く" : "＋ 現場名(行先)を追加";
-  $("bSite").hidden = S.view === "site";
+  $("bSite").hidden = true;   // 2026-11-17 ユーザー：要らないので出さない
   $("app").classList.toggle("wide", S.view === "cal");
-  if (S.view === "cal") $("bAdd").textContent = "＋ 予定・報告を登録";
+  if (S.view === "cal") $("bAdd").textContent = "＋ 新規日報を書く";   // 2026-11-17 ユーザー：「予定・報告を登録」から名前を変えた。今日の日付で新しい詳細日報
   if (S.view === "all") return renderAll();
   if (S.view === "mysum") return renderMySum();
   if (S.view === "cal") return renderCal();
@@ -1078,7 +1078,7 @@ function bind() {
   $("bNext").onclick = () => setDay(S.view === "cal" ? calStep(1) : monthView() ? monthStep(1) : dayAdd(S.day, 1));
   $("bToday").onclick = () => setDay(todayKey());
   $("inDay").onchange = () => { if ($("inDay").value) setDay($("inDay").value); };
-  $("bAdd").onclick = () => { if (S.view === "cal") return newReport(S.day, S.me.name); if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
+  $("bAdd").onclick = () => { if (S.view === "cal") return newReport(todayKey(), S.me.name); if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
   $("bSite").onclick = openApps;
   $("bReport").onclick = report;
   $("bMe").onclick = async () => { const n = await askMe(S.me.acct, false); if (n) setMe(n); };

@@ -459,3 +459,10 @@ dialog .dhead .hoist button.sub { background: #fff; color: var(--head, #1f3a5f);
 dialog .btns.hoisted { display: none; }
 .formSel .formFrom { display: block; font-size: 10px; color: #6b7480; font-weight: normal; white-space: nowrap; text-align: right; }   /* 区分がどこから入ったか（2026-11-17） */
 @media print { .formSel .formFrom { display: none; } }
+/* 新規の日報（2026-11-17）：区分を選ぶまでは区分の欄を点滅。元請・現場名の空欄は押すと選べることを薄い字で */
+@keyframes formBlink { 0%, 100% { box-shadow: 0 0 0 0 rgba(198,40,40,0); } 50% { box-shadow: 0 0 0 4px rgba(198,40,40,.55); } }
+.ttlRow .formSel.must select { animation: formBlink 1s ease-in-out infinite; }
+.ttlRow .formSel.blink select { animation: formBlink .35s ease-in-out 4; }
+#hGen:empty::before, #hSite:empty::before { content: "押して選ぶ"; color: #b0b7bf; font-size: 12px; }
+.ttlRow .copyWork { position: absolute; left: 0; top: 2px; font-size: 12px; letter-spacing: 0; font-weight: normal; }
+@media print { #hGen:empty::before, #hSite:empty::before, .ttlRow .copyWork { display: none; } }

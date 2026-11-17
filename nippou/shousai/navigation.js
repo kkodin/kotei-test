@@ -121,6 +121,12 @@ function detailSelectSite(id, date) {
   detailCommit(); askEmptyPages();
   const s = DB.現場.find(x => x.id === id);
   UI.site = s ? s.id : null; UI.gen = s ? s.元請id : null;
+  if (s && UI.newForm) {   // 新規の日報で先に選んだ区分を、この現場のこの日に（まだ書いていない日は覚えるだけ。書き始めたときに入る）
+    const d0 = s.日[date || UI.day];
+    if (d0 && hasData(d0)) { d0.形態 = UI.newForm; d0.更新 = now(); }
+    s.前回形態 = UI.newForm; s.設定更新 = now(); if (!s.形態) { s.形態 = UI.newForm; formShare(s); }
+    UI.newForm = "";
+  }
   if (date) UI.day = date;
   UI.pg = 0; UNDO = []; REDO = [];
   saveUI(); renderAll(); priceRemind(); askForm();
@@ -228,6 +234,7 @@ function detailRenderBrowse() {
   }
 }
 function detailOpenSites() {
+  if (!site() && !UI.newForm) { toast("先に右上の「区分」（常用・請負）を選んでください", 4000); blinkForm(); return; }   // 新規の日報は区分が先
   detailCommit(); detailRenderPickers(); chipBind(); openDlg($("dSite"));
   setTimeout(() => $("siteQuery").focus(), 0);
 }

@@ -878,7 +878,7 @@ function setCur(k) {
 }
 function buildSheet() {
   $("sheet").innerHTML = `
-    <div class="ttlRow">作　業　日　報<span id="pgNo"></span><label class="formSel" title="この日の仕事が常用か請負か。常用でない日は金額（常用の計算）に入れません">区分 <select id="hForm"></select></label></div>
+    <div class="ttlRow"><button type="button" class="sub small copyWork" id="bCopyWork" title="ほかの日の 作業予定・作業員・使用機材・材料 をこの日に写す（完了報告は写さない）">作業内容をコピー</button>作　業　日　報<span id="pgNo"></span><label class="formSel" title="この日の仕事が常用か請負か。常用でない日は金額（常用の計算）に入れません">区分 <select id="hForm"></select></label></div>
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v dpick" id="hDate" title="押すとカレンダーから日を選べます"></td><td class="v" id="hWd"></td>
@@ -978,7 +978,8 @@ function buildSheet() {
   });
   $("hDate").addEventListener("click", openCal);
   $("hForm").addEventListener("change", () => {
-    const s = site(); if (!s) return;
+    const s = site();
+    if (!s) { UI.newForm = $("hForm").value; saveUI(); refreshSheet(); toast("次に「現場名」を押して現場を選んでください", 4000); return; }   // 新規の日報：区分が先（2026-11-17 ユーザー）
     if (!canEdit()) { refreshSheet(); return; }
     const v = $("hForm").value, d0 = day();
     if (hasData(d0)) { pushUndo(); d0.形態 = v; d0.更新 = now(); }   // まだ書いていない日は覚えるだけ（書き始めたときに入る）
@@ -991,16 +992,16 @@ function buildSheet() {
 function refreshSheet() {
   detailRenderBrowse();
   const s = site(), d = day();
-  $("hGen").textContent = gen() ? genName(gen()) : "（現場名から選んでください）";
-  $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
+  $("hGen").textContent = gen() ? genName(gen()) : "";   // 新規の日報は空欄（2026-11-17 ユーザー）。押すと「現場名を選ぶ」
+  $("hSite").textContent = s ? s.名前 : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
   // 区分：現場設定（工事日報で決めた区分）を読み終えるまでは「読み込み中…」（2026-11-17 ユーザー：「選んでください」のあと勝手に常用になったように見えた）。
   // 現場設定から入った区分は、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる
-  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s), wait = !!s && !v && signedIn() && !FORM_READY;
-    $("hForm").innerHTML = (v ? "" : `<option value="" selected>${wait ? "読み込み中…" : "選んでください"}</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s || wait;
+  { const v = !s ? (UI.newForm || "") : hasData(d) ? formOf(s, UI.day) : nextForm(s), wait = !!s && !v && signedIn() && !FORM_READY;
+    $("hForm").innerHTML = (v ? "" : `<option value="" selected>${wait ? "読み込み中…" : "選んでください"}</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = wait;   // 現場を選ぶ前でも区分は選べる（新規の日報は区分が先）
     const from = s && v && !s.前回形態 && s.形態 === v && s.形態の元 ? s.形態の元 : "";
     $("hForm").title = from ? `${v}：${from} から入りました。この日だけ変えるときはここで選び直してください` : "";
-    const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v && !wait);
+    const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !v && !wait); document.body.classList.toggle("needForm", !v && !wait);
     let note = $("hFormFrom"); if (!note) { note = document.createElement("small"); note.id = "hFormFrom"; note.className = "formFrom"; $("hForm").closest("label").appendChild(note); }
     note.textContent = from ? "（" + from + "）" : ""; }
   const w = wd(UI.day);
@@ -1011,7 +1012,7 @@ function refreshSheet() {
   $("hWx").innerHTML = `<option value="">　</option>` + wxs.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
   $("hWx").value = wx;
   if (document.activeElement !== $("hTmp")) $("hTmp").value = d ? d.気温 : "";
-  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : "";
+  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : (ME && ME.名前) || "";   // 新規の日報（まだ書いていない日）の記入者＝編集している人。書き始めると日報に入る（writer.js の ensureDay）
   $("hTan").placeholder = s && s.担当者 ? "前回 " + s.担当者 : "";   // 記入者は日によって替わる（2026-10-31 ユーザー）。前回の人は薄い字で見せるだけ
   { const n = pageCount(d); if ((UI.pg || 0) > n - 1) UI.pg = n - 1;
     $("pgNo").textContent = n > 1 ? `（${(UI.pg || 0) + 1}／${n}ページ）` : "";
@@ -1120,6 +1121,8 @@ $("fRes").addEventListener("click", e => {
 /* ---------- ボタン ---------- */
 // 選択した日からコピー（2026-10-31 ユーザー：カレンダーで日報の入っている日を選び、中身を見せてからコピーしてよいか聞く）
 $("bCopyPrev").onclick = () => dayCopyOpen();
+// 作業日報の題の左「作業内容をコピー」（2026-11-17 ユーザー）：ほかの日から写す窓
+document.addEventListener("click", e => { if (!e.target.closest("#bCopyWork")) return; if (!site()) { toast("先に区分と現場名を選んでください", 4000); if (formMissing()) blinkForm(); return; } if (!canEdit()) return; dayCopyOpen(); });
 // 写すもの：作業予定（完了報告は写さない）・作業員と使用機材・材料の行・ページの数。天気・気温・記入者・高速・燃料は写さない
 function copyPreview(x) {
   const s = site(), p = s.日[x], cur = day(), T = (t, rows) => rows.length ? `<h4 class="mh">${t}</h4><table class="sm cpv">${rows.join("")}</table>` : "";
@@ -1825,7 +1828,11 @@ const lockName = id => "使用中_" + id + ".json";
 const myKey = () => { const a = msalApp && msalApp.getActiveAccount(); return a ? String(a.username || a.homeAccountId || "").toLowerCase() : "名前:" + nk(ME.名前); };
 const samePerson = by => !!by && (by.端末 === ME.端末 || (by.人 ? by.人 === myKey() : nk(by.名前) === nk(ME.名前)));
 const hm = t => { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+// 区分が決まっていない日は、区分を先に選ぶ（2026-11-17 ユーザー：区分を最初に指定しないと何もいじれない。点滅で目立たせる）
+function formMissing() { const s = site(), d = day(); if (!s) return !UI.newForm; return !(hasData(d) ? formOf(s, UI.day) : nextForm(s)); }
+function blinkForm() { const L = $("hForm").closest("label"); L.classList.remove("blink"); void L.offsetWidth; L.classList.add("blink"); }
 function canEdit() {
+  if (formMissing() && (site() ? FORM_READY || !signedIn() : true)) { toast("先に右上の「区分」（常用・請負）を選んでください", 4000); blinkForm(); return false; }
   if (!RO) return true;
   toast(RO.by && !RO.gone ? `${RO.by.名前}さんが ${hm(RO.by.開始)} から使っています。見るだけ（閲覧のみ）で開いています` : "見るだけ（閲覧のみ）で開いています。上の「編集する」で直せます");
   return false;
