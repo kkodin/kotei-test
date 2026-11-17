@@ -117,6 +117,8 @@ function saveUI() { if (site()) UI.lastSite = UI.site; try { localStorage.setIte
 
 const site = () => DB.現場.find(s => s.id === UI.site) || null;
 const gen = () => DB.元請.find(g => g.id === UI.gen) || null;
+// 元請の見せ方：役所から直に受けた現場（現場一覧の 元請＝自社請け）は「横浜市発注」と見せる（2026-11-17 ユーザー。データの名前は変えない）
+const genName = g => !g ? "" : g.名前 === "自社請け" ? "横浜市発注" : g.名前;
 const day = () => { const s = site(); return s ? s.日[UI.day] || null : null; };
 function ensureDay() {
   const s = site(); if (!s) return null;
@@ -955,7 +957,7 @@ function buildSheet() {
 function refreshSheet() {
   detailRenderBrowse();
   const s = site(), d = day();
-  $("hGen").textContent = gen() ? gen().名前 : "（現場名から選んでください）";
+  $("hGen").textContent = gen() ? genName(gen()) : "（現場名から選んでください）";
   $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
   { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s); $("hForm").innerHTML = (v ? "" : `<option value="" selected>選んでください</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s; const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v); }
@@ -1475,7 +1477,7 @@ function syncMasterSites() {
   if (changed) save();
 }
 function applyMasters(m) {
-  MS = { 現場: m.現場 || [], 社員: m.社員 || [], 従業員: m.従業員 || [], 外注業者: m.外注業者 || [], 機械: m.機械 || [], 読んだ: m.読んだ || now(), 元: m.元 || "" };
+  MS = { 現場: m.現場 || [], 社員: m.社員 || [], 従業員: m.従業員 || [], 外注業者: m.外注業者 || [], 機械: m.機械 || [], 退職: m.退職 || {}, 読んだ: m.読んだ || now(), 元: m.元 || "" };
   try { localStorage.setItem(MKEY, JSON.stringify(MS)); } catch (e) {}
   syncMasterSites(); showMstat(); renderAll();
 }
@@ -1499,11 +1501,13 @@ async function getJSON(where, name) {
 async function loadMasters(quiet) {
   if (!msalApp || !msalApp.getActiveAccount()) return;
   try {
-    const [g, k, w] = await Promise.all([getJSON("kikai", "現場一覧.json"), getJSON("kotei", "マスタ.json"), getJSON("kikai", "稼働データ.json").catch(() => null)]);
+    // 退職者.json（工程データ。工事日報と同じ一覧）：最後の月の次の月から、記入者の候補に出さない（2026-11-17 ユーザー：岡田さんが残っている）
+    const [g, k, w, ret] = await Promise.all([getJSON("kikai", "現場一覧.json"), getJSON("kotei", "マスタ.json"), getJSON("kikai", "稼働データ.json").catch(() => null), getJSON("kotei", "退職者.json").catch(() => null)]);
     const mk = new Map();
     ((w && w.機械) || []).forEach(x => { if (x && x.名前 && !x.使わない) mk.set(x.名前 + "|" + (x.規格 || ""), { 名前: x.名前, 規格: x.規格 || "" }); });
     applyMasters({ 現場: (g && g.現場) || MS.現場, 社員: (k && k.社員) || MS.社員, 従業員: (k && k.従業員) || MS.従業員, 外注業者: (k && k.外注業者) || MS.外注業者,
-      機械: mk.size ? [...mk.values()] : MS.機械, 読んだ: now(), 元: g && g.読んだ ? "現場一覧 " + g.読んだ.slice(0, 16).replace("T", " ") : "" });
+      機械: mk.size ? [...mk.values()] : MS.機械, 退職: ret ? Object.fromEntries((ret.人 || []).filter(x => x && x.名前).map(x => [nk(x.名前), x.最後の月 || "0000-00"])) : MS.退職 || {},
+      読んだ: now(), 元: g && g.読んだ ? "現場一覧 " + g.読んだ.slice(0, 16).replace("T", " ") : "" });
     if (!quiet) toast("マスタを読みました");
   } catch (e) {
     console.warn(e);
@@ -1566,7 +1570,7 @@ async function formShare(s) {
     } catch (e) { console.warn("現場設定を書けませんでした", e); return; }
   }
 }
-function startSync() { Promise.resolve(sync()).finally(formLoad); setInterval(() => syncSoon(0), 60 * 1000); LOCK.site = null; takeLock(false); setInterval(beatLock, 45 * 1000); }
+function startSync() { Promise.resolve(sync()).finally(formLoad); setInterval(() => syncSoon(0), 60 * 1000); LOCK.site = null; takeLock(false); setInterval(beatLock, 20 * 1000); setInterval(() => { if (LOCK.req || LOCK.wait) beatLock(); }, 10 * 1000); }
 $("bSignIn").onclick = () => msalApp && HX.login(msalApp, SCOPES);
 
 /* ================= 日報の共有（2026-10-31 ユーザー：Excel から取り込んだものがほかの PC で見られない） =================
@@ -1746,7 +1750,7 @@ let ME = (() => { try { return JSON.parse(localStorage.getItem(MEKEY)) || null; 
 const saveME = () => { try { localStorage.setItem(MEKEY, JSON.stringify(ME)); } catch (e) {} };
 saveME();
 const STALE = 3 * 60 * 1000;
-const LOCK = { site: null, mine: false, eTag: null, busy: false };
+const LOCK = { site: null, mine: false, eTag: null, busy: false, req: 0, wait: false, asked: 0, done: 0 };   // req：交代を頼んだ時刻／wait：使い終わるのを待つ／asked・done：頼みを見た・答えた（編集中の側）
 let RO = null;   // null＝直せる／{ by:{名前,開始,いつ} }＝ほかの人が使用中／{ self:true }＝自分で見るだけにした／{ gone:true, by }＝使っていた人が終わった
 const lockName = id => "使用中_" + id + ".json";
 // 同じ人か：サインインしたアカウントで見る（PC と iPad の両方で同じ人が開いても、別の人とみなさない。2026-10-31 ユーザー）。
@@ -1769,10 +1773,11 @@ function setRO(v) {
     bar.hidden = false;
     bar.innerHTML = RO.self ? `👁 見るだけ（閲覧のみ）で開いています。<button class="small" id="roEdit">編集する</button>`
       : RO.gone ? `👁 見るだけ：${esc(RO.by.名前)}さんは使い終わりました。<button class="small" id="roEdit">編集する</button>`
-      : `👁 見るだけ（閲覧のみ）：<b>${esc(RO.by.名前)}</b>さんが ${hm(RO.by.開始)} から使っています（${hm(RO.by.いつ)} 確認）。直すときは使い終わるのを待つか <button class="small sub" id="roTake">交代して編集</button>`;
+      : `👁 <b>${esc(RO.by.名前)}</b>さんが開いているので編集できません（${hm(RO.by.開始)} から・${hm(RO.by.いつ)} 確認）。` + swapButtons();
     const e1 = $("roEdit"), e2 = $("roTake");
     if (e1) e1.onclick = () => takeLock(false, true);
-    if (e2) e2.onclick = () => { if (confirm(`${RO.by.名前}さんが使っています。交代して編集しますか？\n（${RO.by.名前}さんの画面は見るだけになります。同じ日を同時に直していると、新しく直したほうが残ります）`)) takeLock(true); };
+    if (e2) e2.onclick = () => { if (confirm(`${RO.by.名前}さんから返事がありません。交代して編集しますか？\n（${RO.by.名前}さんの画面は見るだけになります。${RO.by.名前}さんがまだ保存していない分は残らないことがあります）`)) { LOCK.req = 0; LOCK.wait = false; takeLock(true); } };
+    bindSwapButtons();
   }
   $("bRo").textContent = RO ? "👁 見るだけ" : "✏ 編集中";
   $("bRo").title = RO ? "見るだけで開いています（押すと編集する）" : "押すと見るだけにします（ほかの人が直せるように）";
@@ -1803,14 +1808,105 @@ async function beatLock() {
     const r = await store.get(lockName(id)), by = r && r.data;
     if (LOCK.mine) {
       if (by && !samePerson(by)) { LOCK.mine = false; setRO({ by }); toast(`${by.名前}さんが編集を始めたので、見るだけにしました`, 6000); return; }
-      const w = await store.put(lockName(id), JSON.stringify({ 名前: ME.名前, 人: myKey(), 端末: ME.端末, 開始: by ? by.開始 : Date.now(), いつ: Date.now() }), r && r.eTag);
+      const q = by && by.頼み && LOCK.done !== by.頼み.いつ && Date.now() - by.頼み.いつ < STALE ? by.頼み : null;   // ほかの人から交代を頼まれている
+      if (q && q.いつ !== LOCK.asked) { LOCK.asked = q.いつ; askSwap(q); }   // 目立つ窓で聞く（答えるまで頼みは札に残す）
+      const w = await store.put(lockName(id), JSON.stringify({ 名前: ME.名前, 人: myKey(), 端末: ME.端末, 開始: by ? by.開始 : Date.now(), いつ: Date.now(), ...(q ? { 頼み: q } : {}), ...(by && by.答え && Date.now() - by.答え.いつ < 60 * 1000 ? { 答え: by.答え } : {}) }), r && r.eTag);   // 答えは1分残す（頼んだ人が読むまで）
       LOCK.eTag = w.eTag;
     } else if (RO && RO.by && !RO.gone) {
-      if (!by || Date.now() - by.いつ >= STALE) setRO({ gone: true, by: RO.by });
-      else if (samePerson(by)) setRO({ gone: true, by: RO.by });
-      else if (by.端末 !== RO.by.端末 || by.いつ !== RO.by.いつ) setRO({ by });
+      const a = by && by.答え && by.答え.端末 === ME.端末 && LOCK.req && by.答え.いつ >= LOCK.req ? by.答え : null;
+      if (a && a.答 === "交代") { const was = RO.by; LOCK.req = 0; LOCK.wait = false; await takeLock(false, true); swapNotice(`${was.名前}さんが交代してくれました。編集できます`); return; }
+      if (a && a.答 === "待って") { LOCK.req = 0; LOCK.wait = true; setRO({ by }); swapNotice(`${RO.by.名前}さんから「少し待ってください」と返事がありました。使い終わったら知らせます`); return; }
+      if (!by || Date.now() - by.いつ >= STALE || samePerson(by)) { const was = RO.by, w = LOCK.wait; LOCK.req = 0; LOCK.wait = false; setRO({ gone: true, by: was }); if (w) freeNotice(was); }
+      else if (by.端末 !== RO.by.端末 || by.いつ !== RO.by.いつ || LOCK.req) setRO({ by });   // 返事待ちの表示（2分たったら「それでも交代する」）も直す
     }
   } catch (e) { console.warn(e); }
+}
+/* ---------- 交代のお願い（2026-11-17 ユーザー） ----------
+   ほかの人が開いているとき：［交代を頼む］［待つ］［やめる］。
+   ・交代を頼む：札（使用中_〜.json）に 頼み を書く。編集中の人の画面に目立つ窓が出て「待ってもらう」か「交代する」を選ぶ。
+     交代する → その人の入力を保存してから、札を頼んだ人に渡す。待ってもらう → 頼んだ人に知らせ、使い終わったら知らせる。
+     2分たっても返事が無いときは［それでも交代する］を出す（相手が席を外しているとき）。
+   ・待つ：使い終わったら（札が消えた・3分書き直されない）知らせる。
+   ・やめる：前の画面（工事日報）へ戻る。
+   知らせは札を読み直すときに分かるので、数十秒遅れることがある（編集中の側は20秒ごと、頼んでいる・待っている側は10秒ごとに読む）。 */
+function swapButtons() {
+  if (LOCK.req) return `交代を頼みました（${hm(LOCK.req)}）。返事を待っています… ` + (Date.now() - LOCK.req > 2 * 60 * 1000 ? `<button class="small sub" id="roTake">それでも交代する</button>` : "") + `<button class="small sub" id="swCancel">やめる</button>`;
+  if (LOCK.wait) return `使い終わったら知らせます。<button class="small sub" id="swAsk">交代を頼む</button><button class="small sub" id="swCancel">やめる</button>`;
+  return `<button class="small" id="swAsk">交代を頼む</button><button class="small sub" id="swWait">待つ</button><button class="small sub" id="swCancel">やめる</button>`;
+}
+function bindSwapButtons() {
+  const a = $("swAsk"), w = $("swWait"), c = $("swCancel");
+  if (a) a.onclick = requestSwap;
+  if (w) w.onclick = () => { LOCK.wait = true; setRO(RO); toast("使い終わったら知らせます。この画面は開いたままにしてください", 5000); };
+  if (c) c.onclick = () => { LOCK.req = 0; LOCK.wait = false; if (typeof linkGo === "function") linkGo("nippou", "?stay=1"); else history.back(); };
+}
+async function requestSwap() {
+  const id = LOCK.site; if (!id || !signedIn()) return;
+  if (!ME.名前) { askName(); return; }
+  try {
+    for (let n = 0; n < 3; n++) {
+      const r = await store.get(lockName(id)), by = r && r.data;
+      if (!by || Date.now() - by.いつ >= STALE || samePerson(by)) { takeLock(false, true); return; }   // もう使っていない
+      const t = Date.now();
+      try { await store.put(lockName(id), JSON.stringify({ ...by, 頼み: { 名前: ME.名前, 人: myKey(), 端末: ME.端末, いつ: t } }), r.eTag); LOCK.req = t; LOCK.wait = true; setRO({ by }); toast(`${by.名前}さんに交代を頼みました。返事を待っています`, 5000); return; }
+      catch (e) { if (e.status !== 412 && e.status !== 409) throw e; }
+    }
+  } catch (e) { console.warn(e); toast("交代を頼めませんでした（電波など）。少し待ってもう一度押してください"); }
+}
+// 編集中の人：頼まれた → 目立つ窓（閉じるのはボタンだけ）
+function askSwap(q) {
+  const d = $("dSwap"); if (!d) return;
+  $("swapTitle").textContent = "交代のお願い";
+  $("swapText").innerHTML = `<b>${esc(q.名前)}</b>さんが、この現場（${esc(site() ? site().名前 : "")}）の日報を直したいので、交代を頼んでいます（${hm(q.いつ)}）。`;
+  $("swapBtns").innerHTML = `<button type="button" class="sub" id="swNo">待ってもらう</button><button type="button" id="swYes">交代する</button>`;
+  $("swNo").onclick = () => { closeDlg(d); answerSwap(q, "待って"); };
+  $("swYes").onclick = () => { closeDlg(d); answerSwap(q, "交代"); };
+  d.oncancel = e => e.preventDefault();   // Esc で閉じない（ボタンで答える）
+  if (!d.open) openDlg(d);
+  flashTitle(`交代のお願い：${q.名前}さん`);
+}
+async function answerSwap(q, ans) {
+  const id = LOCK.site; if (!id) return;
+  if (ans === "交代") {   // 入力中の欄を確定して保存してから渡す
+    for (const k of ["up", "dn", "gai", "car"]) if (grids[k] && grids[k].editing()) grids[k].commit();
+    try { await Promise.race([sync(), new Promise(r => setTimeout(r, 5000))]); } catch (e) { }
+  }
+  try {
+    for (let n = 0; n < 3; n++) {
+      const r = await store.get(lockName(id)), by = r && r.data;
+      const t = Date.now(), base = ans === "交代"
+        ? { 名前: q.名前, 人: q.人, 端末: q.端末, 開始: t, いつ: t }   // 札を頼んだ人に渡す
+        : { 名前: ME.名前, 人: myKey(), 端末: ME.端末, 開始: by && samePerson(by) ? by.開始 : t, いつ: t };
+      try {
+        const w = await store.put(lockName(id), JSON.stringify({ ...base, 答え: { 端末: q.端末, 答: ans, いつ: t } }), r && r.eTag);
+        LOCK.done = q.いつ;
+        if (ans === "交代") { LOCK.mine = false; setRO({ self: true }); toast(`${q.名前}さんに交代しました（見るだけになりました）`, 6000); }
+        else { LOCK.eTag = w.eTag; toast(`${q.名前}さんに「少し待ってください」と伝えました`, 5000); }
+        return;
+      } catch (e) { if (e.status !== 412 && e.status !== 409) throw e; }
+    }
+  } catch (e) { console.warn(e); toast("答えを書けませんでした（電波など）"); }
+}
+// 頼んだ人・待っている人への知らせ（目立つ窓）
+function swapNotice(text) {
+  const d = $("dSwap"); if (!d) { toast(text, 8000); return; }
+  $("swapTitle").textContent = "お知らせ"; $("swapText").textContent = text;
+  $("swapBtns").innerHTML = `<button type="button" data-close>わかった</button>`;
+  d.oncancel = null; if (!d.open) openDlg(d); flashTitle(text);
+}
+function freeNotice(by) {
+  const d = $("dSwap"); if (!d) return;
+  $("swapTitle").textContent = "お知らせ";
+  $("swapText").innerHTML = `<b>${esc(by.名前)}</b>さんが使い終わりました。編集できます。`;
+  $("swapBtns").innerHTML = `<button type="button" class="sub" data-close>あとで</button><button type="button" id="swEdit">編集する</button>`;
+  $("swEdit").onclick = () => { closeDlg(d); takeLock(false, true); };
+  d.oncancel = null; if (!d.open) openDlg(d); flashTitle(`${by.名前}さんが使い終わりました`);
+}
+// 別のタブを見ていても気づくように、タブの題を点滅（画面に戻ったら止める）
+function flashTitle(msg) {
+  const t0 = document.title.replace(/^【.*?】/, ""); let on = false;
+  clearInterval(flashTitle.t);
+  flashTitle.t = setInterval(() => { on = !on; document.title = on ? "【" + msg + "】" : t0; if (document.hasFocus() && !on) clearInterval(flashTitle.t); }, 1000);
 }
 function releaseLock(id) {
   if (!signedIn()) return;
@@ -2275,7 +2371,7 @@ function renderMaster() {
   h.push(`</table><div class="btns"><button id="mAddGen">＋ 元請業者を追加</button></div></div></div>`);
   if (g) {
     // 2026-10-31 ユーザー：現場の工期を決める・完了したらチェック。正式名称は日報・Excel に出る名前、社内名称は選ぶときの名前
-    h.push(`<h3 class="sh">${esc(g.名前)} の現場</h3><div class="mrow"><div class="mbox"><table class="ed sites"><tr><th>現場コード</th><th>現場名称（社内）</th><th>現場名称（正式・日報に出る名前）</th><th title="常用＝請負とは別に使ったものを請求する／請負＝請負の範囲（常用の計算に入れない）。日報の上で日ごとに変えられます。ここで変えると、区分を決めていない日がこの区分になります">区分</th><th>工期 始まり</th><th>工期 終わり</th><th>担当者</th><th>完了</th><th>日報の日数</th><th></th></tr>`);
+    h.push(`<h3 class="sh">${esc(genName(g))} の現場</h3><div class="mrow"><div class="mbox"><table class="ed sites"><tr><th>現場コード</th><th>現場名称（社内）</th><th>現場名称（正式・日報に出る名前）</th><th title="常用＝請負とは別に使ったものを請求する／請負＝請負の範囲（常用の計算に入れない）。日報の上で日ごとに変えられます。ここで変えると、区分を決めていない日がこの区分になります">区分</th><th>工期 始まり</th><th>工期 終わり</th><th>担当者</th><th>完了</th><th>日報の日数</th><th></th></tr>`);
     for (const x of DB.現場.filter(y => y.元請id === g.id).sort((a, b) => (!!a.完了 - !!b.完了) || String(b.コード || "").localeCompare(String(a.コード || "")))) h.push(`<tr class="${x.id === UI.site ? "on" : ""}${x.完了 ? " done" : ""}"><td><input data-sid="${x.id}" data-sx="コード" value="${esc(x.コード || "")}" style="width:70px"></td><td><input data-sid="${x.id}" data-sx="略称" value="${esc(x.略称 || "")}" style="width:120px"></td><td><input data-site="${x.id}" value="${esc(x.名前)}" style="width:300px" title="印刷・Excel に出る現場名"></td>` +
       `<td><select data-sid="${x.id}" data-sx="形態">${x.形態 ? "" : `<option value="" selected>選んでください</option>`}${["常用", "請負"].map(k => `<option${x.形態 === k ? " selected" : ""}>${k}</option>`).join("")}</select></td>` +
       `<td><input type="date" data-sid="${x.id}" data-sx="工期開始" value="${esc(x.工期開始 || "")}"></td><td><input type="date" data-sid="${x.id}" data-sx="工期終了" value="${esc(x.工期終了 || "")}"></td><td><input data-sid="${x.id}" data-sx="現場担当者" value="${esc(x.現場担当者 || "")}" style="width:100px"></td>` +
@@ -3039,7 +3135,7 @@ function daySheetPage(wb, s, x, d, full, pi, pn) {
   for (let r = 18; r <= last; r++) ws.getRow(r).height = 21;
   const put = (a, v, m, extra) => { if (m) ws.mergeCells(m); const cl = ws.getCell(a); cl.value = v; if (extra) Object.assign(cl, extra); return cl; };
   put("A1", "作　業　日　報" + (pn > 1 ? `（${pi + 1}／${pn}）` : ""), "A1:P1").font = { ...font, size: 20 };
-  put("A3", "元請業者"); put("B3", gen() ? gen().名前 : "", "B3:D3");
+  put("A3", "元請業者"); put("B3", genName(gen()), "B3:D3");
   put("E3", "日　　付", "E3:F3"); put("G3", dt, "G3:H3").numFmt = 'yyyy"年"m"月"d"日"';
   put("I3", WD[dt.getDay()]); put("J3", "天気"); put("K3", "気温");
   put("L3", "記入者", "L3:L4"); put("M3", d.担当者 || "", "M3:P4");
@@ -3091,7 +3187,7 @@ function sumSheet(wb, s, a, b) {
   let r = 1;
   const cellAt = (rr, cc, v, o = {}) => { const cl = ws.getCell(rr, cc); cl.value = v; cl.font = { ...font, ...(o.font || {}) }; cl.border = BORDER; cl.alignment = { vertical: "middle", horizontal: o.h || "center" }; if (o.fill) cl.fill = { type: "pattern", pattern: "solid", fgColor: { argb: o.fill } }; return cl; };
   const title = t => { const cl = ws.getCell(r, 1); cl.value = t; cl.font = { ...font, size: 12, bold: true }; r += 1; };
-  ws.getCell(1, 1).value = `常用 集計表　${gen() ? gen().名前 : ""}　${s.名前}　${jpDate(a)}〜${jpDate(b)}`; ws.getCell(1, 1).font = { ...font, size: 14, bold: true };
+  ws.getCell(1, 1).value = `常用 集計表　${genName(gen())}　${s.名前}　${jpDate(a)}〜${jpDate(b)}`; ws.getCell(1, 1).font = { ...font, size: 14, bold: true };
   r = 3;
   title("日別");
   const h1 = ["日付", "曜", "天気", "気温", ...S.shoku, "人員計", "残業計(h)", "作業（作業予定の要約）"];
@@ -3208,7 +3304,7 @@ function dayPageHTML(s, x, d, full, pi, pn) {
   const h = [];
   h.push(`<div class="pg"><table class="pt"><colgroup>${[...Array(16)].map((_, i) => `<col style="width:${i === 12 ? 9.2 : 17.86}mm">`).join("")}</colgroup>`);
   h.push(`<tr><td class="t" colspan="16">作　業　日　報${pn > 1 ? `（${pi + 1}／${pn}）` : ""}</td></tr><tr class="b"><td class="nb" colspan="16"></td></tr>`);
-  h.push(`<tr class="a">${c("元請業者")}${c(gen() ? gen().名前 : "", "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("記入者", "", sp(1, 2))}${c(d.担当者 || "", "", sp(4, 2))}</tr>`);
+  h.push(`<tr class="a">${c("元請業者")}${c(genName(gen()), "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("記入者", "", sp(1, 2))}${c(d.担当者 || "", "", sp(4, 2))}</tr>`);
   h.push(`<tr class="a">${c("現場名")}${c(s.名前, "", sp(8))}${c(d.天気 || "")}${c((d.気温 ?? "") + "℃")}</tr>`);
   // 上の5段（Excel は2行ずつ）。空の行は高さがつぶれるので、1段＝高い1行で組む
   // 左：作業内容 5段／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
@@ -3233,7 +3329,7 @@ function printDays(dates, sumRange) {
   if (sumRange) {
     const keepF = $("sumFrom").value, keepT = $("sumTo").value;
     $("sumFrom").value = sumRange[0]; $("sumTo").value = sumRange[1]; renderSum(true);   // PDF は全部の表
-    h.push(`<div class="pg sum"><h3>常用 集計表　${esc(gen() ? gen().名前 : "")}　${esc(s.名前)}　${jpDate(sumRange[0])}〜${jpDate(sumRange[1])}</h3>${$("sumBody").innerHTML.replace(/<h3 class="sh">/g, "<h3>")}</div>`);
+    h.push(`<div class="pg sum"><h3>常用 集計表　${esc(genName(gen()))}　${esc(s.名前)}　${jpDate(sumRange[0])}〜${jpDate(sumRange[1])}</h3>${$("sumBody").innerHTML.replace(/<h3 class="sh">/g, "<h3>")}</div>`);
     if (keepF) { $("sumFrom").value = keepF; $("sumTo").value = keepT; renderSum(); }
   }
   $("printArea").innerHTML = h.join("");

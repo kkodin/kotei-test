@@ -1,12 +1,14 @@
 /* 詳細日報の入口・現場の絞り込み・記入者別表示（2026-11-05）
    日報や共有データの形式は変えず、選択状態だけを端末に保存する。 */
 "use strict";
-const detailPeopleState = { purpose: "view", group: "", query: "" };
+const detailPeopleState = { purpose: "view", group: "", query: "", site: "", onlySite: true };
+// 退職した人：退職者.json の最後の月の次の月から出さない（開いている日の月で見る。過去の月の日報はそのまま）
+const detailGone = (name, ym) => { const g = (MS.退職 || {})[nk(name)]; return !!g && (ym || String(UI.day || "").slice(0, 7)) > g; };
 function detailMasterPeople() {
   const found = new Map();
   for (const [key, group] of [["社員", "社員"], ["従業員", "作業員"]]) for (const value of (MS[key] || [])) {
     const name = String(typeof value === "string" ? value : value && (value.名前 || value.氏名) || "").trim();
-    if (name && !found.has(nk(name))) found.set(nk(name), { name, group });
+    if (name && !found.has(nk(name)) && !detailGone(name)) found.set(nk(name), { name, group });
   }
   return [...found.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
@@ -39,12 +41,12 @@ function detailRenderPickers() {
   if (chosen) UI.gen = chosen.元請id;
   detailOptions("sitePeriod", DB.現場.map(s => detailMeta(s).period || "未設定"), f.period, "すべて");
   detailOptions("siteArea", DB.現場.map(s => detailMeta(s).area || "未設定"), f.area, "すべて");
-  const gs = DB.元請.filter(g => DB.現場.some(s => s.元請id === g.id)).sort((a, b) => a.名前.localeCompare(b.名前, "ja"));
-  $("inGen").innerHTML = '<option value="">すべて</option>' + gs.map(g => `<option value="${esc(g.id)}"${g.id === f.gen ? " selected" : ""}>${esc(g.名前)}</option>`).join("");
+  const gs = DB.元請.filter(g => DB.現場.some(s => s.元請id === g.id)).sort((a, b) => genName(a).localeCompare(genName(b), "ja"));
+  $("inGen").innerHTML = '<option value="">すべて</option>' + gs.map(g => `<option value="${esc(g.id)}"${g.id === f.gen ? " selected" : ""}>${esc(genName(g))}</option>`).join("");
   const sortValues = xs => [...new Set(xs)].sort((a, b) => a.localeCompare(b, "ja", { numeric: true })).map(x => ({ value: x, label: x }));
   detailFilterChoices("periodChoices", "period", sortValues(DB.現場.map(s => detailMeta(s).period || "未設定")), f.period);
   detailFilterChoices("areaChoices", "area", sortValues(DB.現場.map(s => detailMeta(s).area || "未設定")), f.area);
-  detailFilterChoices("genChoices", "gen", gs.map(g => ({ value: g.id, label: g.名前 })), f.gen);
+  detailFilterChoices("genChoices", "gen", gs.map(g => ({ value: g.id, label: genName(g) })), f.gen);
   if (document.activeElement !== $("siteQuery")) $("siteQuery").value = f.query || "";
   const ss = detailSites(), outside = chosen && !ss.some(s => s.id === chosen.id);
   $("inSite").innerHTML = '<option value="">現場名を選んでください</option>' +
@@ -54,7 +56,7 @@ function detailRenderPickers() {
   $("siteCount").textContent = ss.length + "件" + (!ss.length ? "（条件に合う現場はありません）" : "");
   $("siteResults").innerHTML = ss.length ? ss.map(s => {
     const m = detailMeta(s), g = DB.元請.find(x => x.id === s.元請id);
-    return `<button type="button" class="site-choice${s.id === UI.site ? " selected" : ""}" data-select-site="${esc(s.id)}"><b>${esc(s.略称 || s.名前)}</b>${s.略称 && s.略称 !== s.名前 ? `<span>${esc(s.名前)}</span>` : ""}<small>${esc([s.コード, m.period ? m.period + "期" : "", m.area, g && g.名前].filter(Boolean).join(" ／ "))}</small></button>`;
+    return `<button type="button" class="site-choice${s.id === UI.site ? " selected" : ""}" data-select-site="${esc(s.id)}"><b>${esc(s.略称 || s.名前)}</b>${s.略称 && s.略称 !== s.名前 ? `<span>${esc(s.名前)}</span>` : ""}<small>${esc([s.コード, m.period ? m.period + "期" : "", m.area, genName(g)].filter(Boolean).join(" ／ "))}</small></button>`;
   }).join("") : '<p>条件に合う現場はありません。絞り込み条件を変えてください。</p>';
   saveUI(); detailRenderBrowse();
 }
@@ -100,14 +102,24 @@ function detailOpenPeople(purpose) {
   if (purpose === "entry" && (!site() || !canEdit())) { toast("編集できる現場の日報で選んでください"); return; }
   detailCommit(); detailPeopleState.purpose = purpose || "view";
   detailPeopleState.group = ""; detailPeopleState.query = ""; $("peopleQuery").value = "";
+  detailPeopleState.site = UI.site || ""; detailPeopleState.onlySite = !!UI.site;   // 開いている現場に行った人から（2026-11-17 ユーザー）
   detailRenderPeople(); openDlg($("dPeople"));
+}
+// その現場に行った人：その現場の日報の 記入者・作業員（下の表）・外注（名前）と、現場の名簿
+function detailSitePeople(id) {
+  const s = DB.現場.find(x => x.id === id), out = new Set(); if (!s) return out;
+  Object.values(s.日 || {}).forEach(d => { if (!d) return; if (d.担当者) out.add(nk(d.担当者)); [...(d.下 || []), ...(d.外注 || [])].forEach(r => { if (r && r[0]) out.add(nk(r[0])); }); });
+  (s.作業員 || []).forEach(w => { if (w && w.名前) out.add(nk(w.名前)); });
+  return out;
 }
 function detailRenderPeople() {
   if (!$("peopleResults")) return;
   const state = detailPeopleState, all = detailMasterPeople();
-  $("peopleGroups").innerHTML = [["", "すべて"], ["社員", "社員"], ["作業員", "作業員"]].map(([key, label]) => `<button type="button" class="sub" data-people-group="${key}" aria-pressed="${String(state.group === key)}">${label}</button>`).join("");
+  const s = state.site && DB.現場.find(x => x.id === state.site), went = s ? detailSitePeople(s.id) : null, bySite = !!(s && state.onlySite);
+  $("peopleGroups").innerHTML = [["", "すべて"], ["社員", "社員"], ["作業員", "作業員"]].map(([key, label]) => `<button type="button" class="sub" data-people-group="${key}" aria-pressed="${String(state.group === key)}">${label}</button>`).join("") +
+    (s ? `<button type="button" class="sub" data-people-site="1" aria-pressed="${String(bySite)}" title="押すと切り替わります">${bySite ? "この現場に行った人：" + esc(s.略称 || s.名前) : "全員（現場で絞らない）"}</button>` : "");
   const selected = state.purpose === "entry" ? (day() && day().担当者) : UI.detailWriter;
-  const visible = all.filter(p => (!state.group || p.group === state.group) && (!state.query || nk(p.name).includes(nk(state.query))));
+  const visible = all.filter(p => (!state.group || p.group === state.group) && (!state.query || nk(p.name).includes(nk(state.query))) && (!bySite || went.has(nk(p.name))));
   const reports = detailReports();
   $("peopleResults").innerHTML = ["社員", "作業員"].filter(group => !state.group || group === state.group).map(group => {
     const people = visible.filter(p => p.group === group);
@@ -182,7 +194,10 @@ function detailInit() {
   $("siteFilterButtons").onclick = e => {
     const b = e.target.closest("[data-filter-key]"); if (b) detailFilterChange(b.dataset.filterKey, b.dataset.filterValue);
   };
-  $("peopleGroups").onclick = e => { const b = e.target.closest("[data-people-group]"); if (b) { detailPeopleState.group = b.dataset.peopleGroup; detailRenderPeople(); } };
+  $("peopleGroups").onclick = e => {
+    if (e.target.closest("[data-people-site]")) { detailPeopleState.onlySite = !detailPeopleState.onlySite; detailRenderPeople(); return; }
+    const b = e.target.closest("[data-people-group]"); if (b) { detailPeopleState.group = b.dataset.peopleGroup; detailRenderPeople(); }
+  };
   $("peopleQuery").oninput = () => { detailPeopleState.query = $("peopleQuery").value; detailRenderPeople(); };
   $("peopleClear").onclick = () => { detailPeopleState.group = ""; detailPeopleState.query = ""; $("peopleQuery").value = ""; detailRenderPeople(); };
   $("peopleResults").onclick = e => { const b = e.target.closest("[data-person-name]"); if (b) detailPickPerson(b.dataset.personName); };

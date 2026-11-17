@@ -362,7 +362,8 @@ function closeSug() { if (sugBox) { sugBox.remove(); sugBox = null; } sugFor = n
 function showSug(input, items, onPick) {
   closeSug();
   sugFor = input;
-  const q = nk(input.value), hit = items.filter(x => !q || nk(x.v).includes(q) || nk(x.sub || "").includes(q)).slice(0, 40);
+  // 2026-11-16 ユーザー：選べない現場がある → 40件で切っていたので、新しい現場（後ろに並ぶ）が出なかった。全部出す（B-5）
+  const q = nk(input.value), all = items.filter(x => !q || nk(x.v).includes(q) || nk(x.sub || "").includes(q)), hit = all.slice(0, 300);
   if (!hit.length) return;
   sugBox = document.createElement("div"); sugBox.className = "sug";
   let grp = null;
@@ -374,6 +375,7 @@ function showSug(input, items, onPick) {
     b.addEventListener("click", () => { closeSug(); onPick(x); });
     sugBox.appendChild(b);
   });
+  if (all.length > hit.length) { const h = document.createElement("div"); h.className = "grp"; h.textContent = `ほかに ${all.length - hit.length} 件あります。名前を打つと絞り込めます`; sugBox.appendChild(h); }
   input.parentElement.appendChild(sugBox);
 }
 function bindPick(input, items, onPick) {
@@ -394,7 +396,7 @@ function placeItems() {
   const recent = [], seen = new Set();
   for (let i = 0; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => { const k = nk(r.行先); if (r.行先 && !seen.has(k)) { seen.add(k); recent.push({ grp: "最近行った所", v: r.行先, コード: r.コード || "" }); } });
   return [...recent, ...OFFICE.filter(v => !seen.has(nk(v))).map(v => ({ grp: "本社など", v })),
-    ...S.sites.filter(x => !seen.has(nk(siteName(x)))).map(x => ({ grp: "現場", v: siteName(x), sub: [x.コード, x.元請 === "自社請け" ? "自社請け " + (x.発注者 || "") : x.元請].filter(Boolean).join(" "), コード: x.コード || "" }))];
+    ...S.sites.filter(x => !seen.has(nk(siteName(x)))).map(x => ({ grp: "現場", v: siteName(x), sub: [x.コード, x.元請 === "自社請け" ? "横浜市発注 " + (x.発注者 || "") : x.元請].filter(Boolean).join(" "), コード: x.コード || "" }))];
 }
 // 人の候補：この行先に前に来ていた人 → 社員・従業員。PICK.人 で 職員（社員）・作業員（従業員）に絞る
 const PICK = { 人: "", 機械: "" };   // 選ぶ欄の絞り込み（参加者＝職員／作業員、機械＝稼働表の分類）
@@ -768,7 +770,7 @@ function chooseSite() {
   rowsOf().forEach(r => { if (r.行先 && !isOffice(r.行先) && !seen.has(nk(r.行先))) { seen.add(nk(r.行先)); today.push({ grp: "この日の現場", v: r.行先, コード: r.コード || "" }); } });
   if (today.length === 1) return openSite(today[0].v, today[0].コード);
   const items = [...today, ...placeItems().filter(x => x.grp !== "本社など" && !seen.has(nk(x.v)))];
-  const btns = () => { const q = nk($("sQ").value); let g = null; return items.filter(x => !q || nk(x.v).includes(q) || nk(x.sub || "").includes(q)).slice(0, 60).map((x, i) =>
+  const btns = () => { const q = nk($("sQ").value); let g = null; return items.filter(x => !q || nk(x.v).includes(q) || nk(x.sub || "").includes(q)).slice(0, 300).map((x, i) =>
     (x.grp !== g ? `<div class="grp">${esc(g = x.grp)}</div>` : "") + `<button type="button" data-i="${items.indexOf(x)}">${esc(x.v)}${x.sub ? `<small> ${esc(x.sub)}</small>` : ""}</button>`).join("") || "<p>見つかりません</p>"; };
   dlg(`<h2>どの現場の日報を開きますか</h2><input id="sQ" placeholder="現場名・コードで絞り込み" autocomplete="off"><div class="namelist" id="sL"></div><div class="btns"><button data-close>やめる</button></div>`);
   $("sL").innerHTML = btns(); $("sQ").oninput = () => { $("sL").innerHTML = btns(); };

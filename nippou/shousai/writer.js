@@ -2,8 +2,8 @@
    ・用紙（この詳細日報の書式）はそのまま。日報1つ（現場・日）の保存先を、記入者のファイル 工程データ\日報\個人_<記入者>_<年月>.json の行にする。
      行.書式 ＝ その日の用紙の中身（上・下・外注・車・天気・気温・担当者…）＋ 現場id。行の 行先・人・外注・機械・作業行 は書式から作る（工事日報の表・一覧にそのまま出る）。
    ・同じ現場・同じ日の日報は1つ。最初に書いた人（担当者）が記入者。現場ごとのファイル（現場_<id>.json）には、移した日は書かない（名簿・単価・決まりは残る）。
-   ・他の人の日報は見るだけ。同じ現場に行った人は「この日報を直す」で直せる（直したことの知らせ・履歴は段階3・4）。
-   ・記入者を押して人を選ぶと、その人のこの日の日報を見る。現場名は用紙の上の欄に入れる（候補から選ぶか打つ）。
+   ・他の人の日報も直せる（2026-11-17 ユーザー：見るだけをやめた。同時に直すのは「使用中」の札と交代で防ぐ）。
+   ・記入者を押して人を選ぶと、その人の日報を見る。現場名を押すと「現場名を選ぶ」窓（2026-11-17 に入れる欄から窓へ戻した）。
    ・MOVE_FROM より前の日は今までどおり現場ごとのファイル（前の日報は動かさない）。 */
 "use strict";
 const MOVE_FROM = "2026-11-01";
@@ -184,61 +184,58 @@ siteForShare = s => { const days = {}; Object.entries(s.日).forEach(([k, d]) =>
 const wSync0 = sync;
 sync = async function () { await wSync0(); await writerSync(); if (UI.tab === "sheet") refreshSheet(); if (UI.tab === "sum") renderSum(); };
 
-/* ---------- 他の人の日報は見るだけ（同じ現場に行った人は「この日報を直す」で直せる） ---------- */
-const otherWriter = () => { const d = day(), s = site(); return !!(s && d && d.担当者 && myName() && nk(d.担当者) !== nk(myName()) && !WS.allow[wKey(s.id, UI.day)]); };
-const wCanEdit0 = canEdit;
-canEdit = function () {
-  if (!wCanEdit0()) return false;
-  if (otherWriter()) { toast(`${day().担当者} さんの日報です。見るだけで開いています（同じ現場に行った人は上の「この日報を直す」で直せます）`, 5000); return false; }
-  return true;
-};
+/* ---------- 他の人の日報も直せる（2026-11-17 ユーザー：見るだけをやめる。同時に直すのは「使用中」の札と交代で防ぐ） ----------
+   前は「他の人の日報は見るだけ・同じ現場に行った人は『この日報を直す』で直せる」だった。いまは だれの日報でも直せる。
+   上に「○○さんが書いた日報です」と出すだけ。同時に直すのは、現場ごとの「使用中」の札（app.js）で止める。 */
+const otherWriter = () => { const d = day(), s = site(); return !!(s && d && d.担当者 && myName() && nk(d.担当者) !== nk(myName())); };
 // 新しく書く日は、自分が記入者
 const wEnsure0 = ensureDay;
 ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d.担当者) d.担当者 = myName(); return d; };
 
-/* ---------- 記入者を押す → その人のこの日の日報を見る ---------- */
+/* ---------- 記入者を押す → その人の日報を見る（2026-11-17 ユーザー：人を選んでもその人の日報に行かなかった） ----------
+   1) この日に、その人が記入者の日報 → 2) この日に、その人が作業員・外注に入っている日報 → 3) この日より前で、いちばん近い日のその人の日報。
+   現場を選んであれば（人の窓の「この現場に行った人」）その現場を先に探す。 */
 $("hTan").onclick = () => detailOpenPeople("view");
 $("hTan").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenPeople("view"); } };
+function wPersonDays(name) {
+  const n = nk(name), out = [];
+  for (const s of DB.現場) for (const [k, d] of Object.entries(s.日 || {})) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !d || !hasData(d)) continue;
+    const w = nk(d.担当者) === n, inRow = [...(d.下 || []), ...(d.外注 || [])].some(r => r && r[0] && nk(r[0]) === n);
+    if (w || inRow) out.push({ s, k, w });
+  }
+  return out;
+}
 detailPickPerson = function (name) {
+  const person = detailMasterPeople().find(p => nk(p.name) === nk(name));
+  if (!person) { toast("マスターに登録されている人を選んでください"); detailRenderPeople(); return; }
+  if (detailPeopleState.purpose === "entry") {   // ▾：この日報の記入者を決める
+    if (!site() || !canEdit()) return;
+    $("hTan").value = person.name; $("hTan").dispatchEvent(new Event("change")); closeDlg($("dPeople")); return;
+  }
   closeDlg($("dPeople"));
-  const k = UI.day, hit = DB.現場.filter(s => s.日[k] && nk(s.日[k].担当者) === nk(name));
-  if (!hit.length) { toast(`${name} さんの ${jpDate(k)} の日報はありません`); return; }
-  const s = hit[0]; UI.gen = s.元請id; UI.site = s.id; saveUI(); renderAll();
-  if (hit.length > 1) toast(`${name} さんはこの日 ${hit.length} つの現場の日報があります。ほかは現場名の欄から開けます`, 5000);
+  const k = UI.day, pref = detailPeopleState.onlySite ? detailPeopleState.site : "", all = wPersonDays(person.name);
+  const rank = x => (x.s.id === pref ? 0 : 2) + (x.w ? 0 : 1);
+  const today = all.filter(x => x.k === k).sort((a, b) => rank(a) - rank(b));
+  let hit = today[0], moved = false;
+  if (!hit) { const before = all.filter(x => x.k < k && (!pref || x.s.id === pref)).sort((a, b) => b.k.localeCompare(a.k) || rank(a) - rank(b)); hit = before[0] || all.filter(x => x.k < k).sort((a, b) => b.k.localeCompare(a.k))[0]; moved = !!hit; }
+  if (!hit) { toast(`${person.name} さんの日報は、${jpDate(k)} とそれより前にはありません`, 5000); return; }
+  UI.detailWriter = person.name; UI.detailView = "site";
+  detailSelectSite(hit.s.id, hit.k);
+  if (moved) toast(`${person.name} さんの ${jpDate(k)} の日報はありません。いちばん近い ${jpDate(hit.k)}（${siteLabel(hit.s)}）を開きました`, 6000);
+  else if (today.length > 1) toast(`${person.name} さんはこの日 ${today.length} つの日報に入っています。ほかは現場名から開けます`, 5000);
+  else if (!hit.w) toast(`${person.name} さんが作業員に入っている日報です（記入者：${hit.s.日[hit.k].担当者 || "未記入"}）`, 5000);
 };
 
-/* ---------- 現場名は用紙の上の欄に入れる（「現場名を選ぶ」窓はやめる） ---------- */
-function siteOfName(v) {
-  v = String(v || "").trim(); if (!v) return null;
-  return DB.現場.find(s => siteLabel(s) === v || s.名前 === v || s.略称 === v || (s.コード && String(s.コード) === v)) || bestOf(DB.現場, s => siteScore(s, v))[0] || null;
-}
-function paintSiteInput() {
-  const cell = $("hSite"); if (!cell || (document.activeElement && document.activeElement.id === "hSiteIn")) return;
-  const s = site();
-  cell.onclick = null; cell.onkeydown = null; cell.removeAttribute("tabindex");
-  cell.innerHTML = `<input id="hSiteIn" list="hSiteList" autocomplete="off" placeholder="現場名を入れる（打つと候補が出ます）" value="${esc(s ? s.名前 : "")}"><datalist id="hSiteList">${DB.現場.filter(x => !x.完了).map(x => `<option value="${esc(siteLabel(x))}">${esc(x.名前)}</option>`).join("")}</datalist>`;
-  const inp = $("hSiteIn");
-  inp.onchange = () => {
-    const x = siteOfName(inp.value);
-    if (!x) { toast("現場一覧にない現場です。打ち直すか、「現場・名簿」で現場を足してください"); inp.value = s ? s.名前 : ""; return; }
-    if (s && x.id === s.id) { inp.value = x.名前; return; }
-    UI.gen = x.元請id; UI.site = x.id; UI.pg = 0; saveUI(); renderAll(); askForm();
-    const d = x.日[UI.day];
-    if (d && d.担当者 && nk(d.担当者) !== nk(myName())) alert(`${d.担当者} さんが先にこの現場（${x.名前}）の ${jpDate(UI.day)} の日報を作成しています。確認してください。\n直すところがあれば、上の「この日報を直す」を押して直してください。`);
-  };
-}
+/* ---------- 現場名を押すと「現場名を選ぶ」窓（2026-11-17 ユーザー：入れる欄をやめて窓に戻す。navigation.js の detailOpenSites） ---------- */
 function paintWriterBar() {
   let bar = $("wrBar");
   if (!bar) { bar = document.createElement("div"); bar.id = "wrBar"; bar.className = "wrbar"; $("roBar").after(bar); }
-  const s = site(), d = day();
+  const d = day();
   if (!otherWriter()) { bar.hidden = true; return; }
   bar.hidden = false;
-  bar.innerHTML = `👁 <b>${esc(d.担当者)}</b> さんの日報です（見るだけ）。同じ現場に行った人で直すところがあれば → <button type="button" class="small" id="wrEdit">この日報を直す</button>`;
-  $("wrEdit").onclick = () => {
-    if (!confirm(`${d.担当者} さんが作成した日報を直します。よいですか？\n（直したことを、この現場に参加した人に知らせる仕組みは、これから作ります）`)) return;
-    WS.allow[wKey(s.id, UI.day)] = true; refreshSheet();
-  };
+  bar.innerHTML = `✎ <b>${esc(d.担当者)}</b> さんが書いた日報です。直したときは、${esc(d.担当者)} さんにも知らせてください。`;
 }
 const wRS0 = refreshSheet;
-refreshSheet = function () { wRS0(); paintSiteInput(); paintWriterBar(); };
-paintSiteInput(); paintWriterBar();
+refreshSheet = function () { wRS0(); paintWriterBar(); };
+paintWriterBar();

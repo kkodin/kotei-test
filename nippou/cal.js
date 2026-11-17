@@ -351,7 +351,7 @@ const fmtDay = k => { const d = dateOf(k); return `${d.getFullYear()} 年 ${d.ge
 function siteInfo(place, code) {
   const st = place && !isOffice(place) ? siteOf(place, code) : null;
   if (!st) return place && !isOffice(place) ? "現場一覧にない現場" : "";
-  return `工事コード ${esc(st.コード || "―")}　` + (st.元請 === "自社請け" ? `自社請け　発注者 ${esc(st.発注者 || "―")}` : `元請 ${esc(st.元請 || "―")}${st.発注者 ? `　発注者 ${esc(st.発注者)}` : ""}`);
+  return `工事コード ${esc(st.コード || "―")}　` + (st.元請 === "自社請け" ? `横浜市発注　発注者 ${esc(st.発注者 || "―")}` : `元請 ${esc(st.元請 || "―")}${st.発注者 ? `　発注者 ${esc(st.発注者)}` : ""}`);
 }
 function showEv(x) {
   const r = x.r, L = workLines(r).filter(l => l.予定 || l.報告), two = (k, f) => {

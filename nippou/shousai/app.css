@@ -446,3 +446,10 @@ form.nofill { display: contents; }
 
 .sumwarn { margin: 8px 0; padding: 8px 12px; background: #fde8e6; border: 1px solid #e0a39c; border-radius: 6px; color: #8a1f12; font-size: 13px; }
 .sumwarn ul { margin: 4px 0 0; padding-left: 20px; }
+
+/* 交代のお願い（2026-11-17）：ボタンはハンドルの右に置き、いつも見える */
+dialog.swapdlg { max-width: 520px; border: 3px solid #e65100; }
+dialog.swapdlg .dhead { background: #e65100; }
+dialog.swapdlg .hbtns { display: flex; gap: 6px; }
+dialog.swapdlg .dbody p { font-size: 16px; line-height: 1.6; margin: 12px 4px; }
+.robar .small + .small { margin-left: 4px; }
