@@ -779,15 +779,20 @@ function carFill(s, row, c0) {
   if (c0.includes(6) && row[6]) {
     row[6] = masterName(row[6]);
     if (!row[5] && !c0.includes(5)) row[5] = companyOf(row[6], s) || "";
+    // 名前を入れたとき：自社車両のマスタでその人が担当者の車が1台なら、その車両名と車番（2026-11-17）。無ければ前に乗った車
+    const mine = row[7] || c0.includes(7) ? [] : (MS.自社車両 || []).filter(v => { const t = nk(v.担当者 ?? v.使用者 ?? ""); return t && (nk(row[6]).startsWith(t) || t.startsWith(nk(row[6]).slice(0, 2))); });
+    if (mine.length === 1) { row[7] = mine[0].車両名; if (!row[8]) row[8] = mine[0].車番; }
     if (!row[7] && !c0.includes(7)) { const p = prev(r => nk(r[6]) === nk(row[6]) && r[7]); if (p) { row[7] = p[7]; if (!row[8]) row[8] = p[8] || ""; } }
   }
-  if (c0.includes(7) && row[7] && !row[8] && !c0.includes(8)) { const p = prev(r => nk(r[7]) === nk(row[7]) && r[8]); if (p) row[8] = p[8]; }
-  // 自社車両のマスタ（2026-11-17）：車両名が1台だけなら車番を入れる。同じ車両名が何台もあるときは、名前（使う人）が合う1台
+  // 車番：自社車両のマスタ（2026-11-17）を先に見る。車両名が1台だけならその車番、同じ車両名が何台もあるときは名前の欄の人が担当者の1台。
+  // マスタで決まらないときは、前にその車両名で書いた車番
   if ((c0.includes(7) || c0.includes(6)) && row[7] && !row[8] && !c0.includes(8)) {
     const vs = (MS.自社車両 || []).filter(v => loose(v.車両名) === loose(row[7]));
-    const who = nk(row[6] || ""), byUser = who ? vs.filter(v => v.使用者 && (who.startsWith(nk(v.使用者)) || nk(v.使用者).startsWith(who.slice(0, 2)))) : [];
+    const tan = v => v.担当者 ?? v.使用者 ?? "";   // 担当者（その車に乗る人）。前の形の 使用者 も読む
+    const who = nk(row[6] || ""), byUser = who ? vs.filter(v => tan(v) && (who.startsWith(nk(tan(v))) || nk(tan(v)).startsWith(who.slice(0, 2)))) : [];
     const v = vs.length === 1 ? vs[0] : byUser.length === 1 ? byUser[0] : null;
     if (v) row[8] = v.車番;
+    else if (c0.includes(7)) { const p = prev(r => nk(r[7]) === nk(row[7]) && r[8]); if (p) row[8] = p[8]; }
   }
 }
 // 高速・燃料の1行の金額：実費があればそれ。高速＝区間の単価（通勤費の高速代）×回数（往復は2）、燃料＝材料の単価×リットル
