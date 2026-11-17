@@ -941,7 +941,55 @@ async function renderAll() {
 
 /* ---------- 窓・知らせ ---------- */
 // cls：wide＝広い窓、keep＝外を押しても閉じない（書いている途中の窓）
-function dlg(html, cls) { $("dlg").className = cls || ""; $("dlgBody").innerHTML = html; const d = $("dlg"); if (!d.open) d.showModal(); }
+function dlg(html, cls) { $("dlg").className = cls || ""; $("dlgBody").innerHTML = html; const d = $("dlg"); if (!d.open) { d.style.margin = d.style.left = d.style.top = d.style.inset = ""; d.showModal(); } dlgTidy(); }
+/* フォームの共通ルール（2026-11-14 利用者指定。工事日報に当てはめたのは 2026-11-17）
+   1. 上の帯（ハンドル .dh）を持って動かせる（マウス・タッチ。帯が画面の外へ出切らない）
+   2. ボタンは帯の右に置き、中身をスクロールしても隠れない（帯は中身の上に貼り付ける。いちばん下のボタンの並び .btns を帯へ移す）
+   3. 外を押しても閉じない（閉じるのはボタンだけ。入力の窓（keep）は Esc でも聞いてから閉じる）
+   4. ホイールで後ろの画面が動かない（app.css の overscroll-behavior・開いている間は html を止める）
+   窓の中身は各画面が dlg(…) で作り、あとから作り直す画面もあるので、中身が変わるたびに帯とボタンを整える（MutationObserver）。
+   ボタンは #dlgBody の中に残すので、$("dlgBody").querySelector(…) で探す処理はそのまま動く。 */
+function dlgTidy() {
+  const B = $("dlgBody"); if (!B.firstElementChild) return;
+  let head = B.querySelector(":scope > .dh");
+  if (!head) {
+    head = document.createElement("div"); head.className = "dh";
+    const h = B.querySelector(":scope > h2"); if (h) head.appendChild(h);
+    B.prepend(head);
+  }
+  if (!head.querySelector(":scope > .grip")) head.insertAdjacentHTML("afterbegin", `<span class="grip" title="ここを持って動かす">⠿</span>`);
+  const bars = [...B.querySelectorAll(".btns")].filter(b => !head.contains(b) && !b.classList.contains("hoisted")), bar = bars[bars.length - 1];
+  if (!bar || !bar.querySelector(":scope > button")) return;
+  const x = head.querySelector(":scope > button[data-close]");
+  let box = head.querySelector(":scope > .hbtns");
+  if (!box) { box = document.createElement("span"); box.className = "hbtns"; head.insertBefore(box, x || null); }
+  box.replaceChildren(...bar.querySelectorAll(":scope > button"));
+  bar.classList.add("hoisted");
+  if (x) x.hidden = !!box.querySelector("[data-close]");   // 同じ「閉じる」が2つにならないように × を隠す
+}
+new MutationObserver(() => { if ($("dlg").open) dlgTidy(); }).observe($("dlgBody"), { childList: true, subtree: true });
+// 帯を持って動かす（Pointer Events。マウスもタッチも）
+(function () {
+  const d = $("dlg"); let drag = null;
+  d.addEventListener("pointerdown", e => {
+    const h = e.target.closest("#dlgBody > .dh"); if (!h || e.button > 0 || e.target.closest("button, input, select, textarea, a, label")) return;
+    if (d.classList.contains("wide") && window.innerWidth < 760) return;   // スマホの全画面の窓は動かさない
+    const r = d.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, id: e.pointerId };
+    d.style.margin = "0"; d.style.inset = "auto"; d.style.left = r.left + "px"; d.style.top = r.top + "px";
+    try { h.setPointerCapture(e.pointerId); } catch (x) { }
+    e.preventDefault();
+  });
+  d.addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const w = d.offsetWidth;
+    d.style.left = Math.max(-w + 80, Math.min(innerWidth - 80, e.clientX - drag.dx)) + "px";
+    d.style.top = Math.max(0, Math.min(innerHeight - 40, e.clientY - drag.dy)) + "px";
+  });
+  const up = () => { drag = null; };
+  d.addEventListener("pointerup", up); d.addEventListener("pointercancel", up);
+  // Esc：入力の窓（keep）は聞いてから閉じる
+  d.addEventListener("cancel", e => { if (d.classList.contains("keep")) { e.preventDefault(); if (confirm("入力をやめて閉じますか？（保存していない分は残りません）")) closeDlg(); } });
+})();
 function closeDlg() { $("dlg").close(); }
 // 文字の大きさ（5段階。2026-11-03 ユーザー）：この端末だけ覚える。app.css の font-size は calc(… * var(--fs))
 const FS = [["とても小さい", .85], ["小さい", .93], ["標準", 1], ["大きい", 1.15], ["とても大きい", 1.3]];
@@ -954,7 +1002,7 @@ function chooseFs() {
   dlg(`<h2>文字の大きさ</h2><div class="namelist">${FS.map(([t], i) => `<button type="button" data-fs="${i}"${i === fsNow ? ` class="pri"` : ""}>${t}</button>`).join("")}</div><div class="btns"><button data-close>閉じる</button></div>`);
   $("dlgBody").querySelectorAll("[data-fs]").forEach(b => b.onclick = () => { setFs(+b.dataset.fs); closeDlg(); render(); });
 }
-$("dlg").addEventListener("click", e => { if (e.target.closest("[data-close]") || (e.target === $("dlg") && !$("dlg").classList.contains("keep"))) closeDlg(); });
+$("dlg").addEventListener("click", e => { if (e.target.closest("[data-close]")) closeDlg(); });   // 外（背景）を押しても閉じない（フォームの共通ルール 3）
 let toastT = null;
 function toast(m, ms = 3000) { const t = $("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms); }
 

@@ -453,3 +453,7 @@ dialog.swapdlg .dhead { background: #e65100; }
 dialog.swapdlg .hbtns { display: flex; gap: 6px; }
 dialog.swapdlg .dbody p { font-size: 16px; line-height: 1.6; margin: 12px 4px; }
 .robar .small + .small { margin-left: 4px; }
+/* フォームの共通ルール（2026-11-17）：ハンドルへ移したボタン */
+dialog .dhead .hoist { display: flex; gap: 6px; flex: none; }
+dialog .dhead .hoist button.sub { background: #fff; color: var(--head, #1f3a5f); }
+dialog .btns.hoisted { display: none; }

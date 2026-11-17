@@ -389,3 +389,14 @@ dialog.reconcile { width: min(1200px, 96vw); }
 table.cg th[data-who], table.grid th[data-who] { cursor: pointer; }
 table.cg th[data-who]:hover, table.grid th[data-who]:hover { text-decoration: underline; }
 button.wkback { font-weight: bold; }
+/* フォームの共通ルール（2026-11-17 工事日報に当てはめた）：帯（ハンドル）は中身の上に貼り付け、ボタンは帯の右。後ろの画面は動かさない */
+dialog { overscroll-behavior: contain; }
+#dlgBody { overscroll-behavior: contain; }
+html:has(dialog#dlg[open]), html:has(dialog#dlg[open]) body { overflow: hidden; overscroll-behavior: none; }
+#dlgBody > .dh { position: sticky; top: 0; z-index: 5; background: #fff; margin: -16px -16px 8px; padding: 6px 10px 6px 6px; gap: 6px; flex-wrap: wrap; cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+#dlgBody > .dh .grip { color: #8a96a3; font-size: calc(18px * var(--fs)); padding: 0 4px; }
+#dlgBody > .dh h2 { margin: 0 !important; font-size: calc(17px * var(--fs)); }
+#dlgBody > .dh .hbtns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+#dlgBody > .dh .hbtns button { font-size: calc(14px * var(--fs)); border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 4px 12px; min-height: 34px; cursor: pointer; }
+#dlgBody > .dh .hbtns button.pri { background: var(--pri); color: #fff; border-color: var(--pri); }
+#dlgBody .btns.hoisted:not(:has(> :not(span))) { display: none; }

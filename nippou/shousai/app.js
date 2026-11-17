@@ -62,6 +62,9 @@ function fixDB(d) {
   const b = blankDB();
   for (const k in b) if (d[k] == null) d[k] = b[k];
   d.職種単価 ||= {}; d.共通更新 ||= ""; d.会社一覧 ||= [];
+  // 「現場名を選ぶ」の 元請名・地域 のボタン（2026-11-17 ユーザー：右クリックで 消す・候補を足す・名前を直す）。みんなで同じ（共通.json）
+  // { 元請: { 隠す: [元の名前], 足す: [名前], 名前: { 元の名前: 見せる名前 } }, 地域: { 同じ } }
+  d.絞り込み ||= {}; for (const k of ["元請", "地域"]) { const x = d.絞り込み[k] ||= {}; x.隠す ||= []; x.足す ||= []; x.名前 ||= {}; }
   d.職種別名 ||= {}; d.単価たたき台 ||= null;   // 単価のたたき台 { 元: 現場名, 行: [単価マスタの行] }（2026-10-31：ほかの現場はこれを写して見直す）   // まとめた工種の古い名前 → 新しい名前（2026-10-31：土工 → 普通作業員）。打った・読んだ古い名前は新しい名前にする   // 会社・所有者の共通の一覧（2026-10-31）
   d.現場.forEach(fixSite);
   return d;
@@ -118,7 +121,7 @@ function saveUI() { if (site()) UI.lastSite = UI.site; try { localStorage.setIte
 const site = () => DB.現場.find(s => s.id === UI.site) || null;
 const gen = () => DB.元請.find(g => g.id === UI.gen) || null;
 // 元請の見せ方：役所から直に受けた現場（現場一覧の 元請＝自社請け）は「横浜市発注」と見せる（2026-11-17 ユーザー。データの名前は変えない）
-const genName = g => !g ? "" : g.名前 === "自社請け" ? "横浜市発注" : g.名前;
+const genName = g => !g ? "" : (((DB.絞り込み || {}).元請 || {}).名前 || {})[g.名前] || (g.名前 === "自社請け" ? "横浜市発注" : g.名前);   // 右クリックの「名前を直す」が先
 const day = () => { const s = site(); return s ? s.日[UI.day] || null : null; };
 function ensureDay() {
   const s = site(); if (!s) return null;
@@ -205,9 +208,10 @@ const UPC = [
 // di＝データの何列目か（2026-10-31 会社の欄を足した。データは後ろ（12）に足し、画面では作業員名の右に出す）
 // 幅は紙（#sheet）に収まるように詰めた（2026-10-31 ユーザー：用紙からはみ出た）
 // 累計・累計数量の列は出さない（2026-10-31 ユーザー）。空いた幅はほかの列に配った。データの列（di）は前と同じ
+// 2026-11-17 ユーザー：会社名を一番左に置いて、会社から作業員名を絞る流れに（データの列は前と同じ：会社＝12・作業員名＝0）
 const DNC = [
-  { t: "作業員名", w: 120, k: "txt", stopFlow: true },
   { t: "会社", w: 110, k: "txt", di: 12, stopFlow: true },
+  { t: "作業員名", w: 120, k: "txt", di: 0, stopFlow: true },
   { t: "昼夜", w: 36, k: "shift", cls: "c", align: "c", di: 14 },
   { t: "始業時間", w: 54, k: "time", cls: "c", align: "c" },
   { t: "終業時間", w: 54, k: "time", cls: "c", align: "c" },
@@ -288,8 +292,8 @@ function goPage(p) {
 }
 UPC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
 // 画面の順のうち、di の無い列はデータの 0〜11 を順に当てる（会社＝12・所有者＝13 は後ろに足した列）
-{ let k = 0; DNC.forEach((c, i) => { c.letter = String.fromCharCode(65 + i); if (c.di == null) c.di = k++; }); }
-const GAIC = DNC.slice(0, 7).map(c => ({ ...c }));   // 外注の欄：作業員名〜残（使用機材・材料は作業員の表に書く）
+{ let k = 1; DNC.forEach((c, i) => { c.letter = String.fromCharCode(65 + i); if (c.di == null) c.di = k++; }); }   // 作業員名＝0 は上で決めた。始業＝1・終業＝2・工種＝3・残＝4・使用機材＝5・規格＝6
+const GAIC = DNC.slice(0, 7).map(c => ({ ...c }));   // 外注の欄：会社・作業員名〜残（使用機材・材料は作業員の表に書く）
 const di = (key, c) => key === "dn" || key === "gai" ? DNC[c].di : key === "up" ? (UPC[c].di ?? c) : c;   // 画面の列 → データの列
 const SECS = { up: UPC, dn: DNC, gai: GAIC, car: CARC };
 
@@ -692,7 +696,7 @@ function applyCells(key, ch, noCheck) {
     if (r >= PG[key] * pageCount(d)) continue;
     while (arr.length <= r) arr.push(Array(NC).fill(""));
     const row = arr[r]; while (row.length < NC) row.push("");
-    row[c] = isP && c === 14 ? normalize("shift", v) : key === "car" && c <= 1 ? carNorm(c, v) : v; touched.add(r);
+    row[c] = isP && c === 14 ? normalize("shift", v) : key === "car" && c <= 1 ? carNorm(c, v) : key === "car" && c === 8 ? plateNorm(v) : v; touched.add(r);
     if (key === "up" && c === 2) d.人員手 = true;
   }
   // 同じ人を同じ日に重ねない（作業員の欄・外注の欄をまたいで。昼夜がちがえばよい）
@@ -757,6 +761,18 @@ function carNorm(c, v) {
   if (c === 0) return /高速/.test(z) ? "高速" : /混合/.test(z) ? v : /軽油|ディーゼル/.test(z) ? "軽油" : /ガソ|レギュラー|ハイオク/.test(z) ? "ガソリン" : v;
   return /往復|両/.test(z) ? "往復" : /^往|行き/.test(z) ? "往路" : /^復|帰り/.test(z) ? "復路" : v;
 }
+// 車番の書式（2026-11-17 ユーザー）：4桁 00-00・3桁 0-00・2桁 00・1桁 0。数字（とハイフン・空白）だけのときに直す。地名やかなが入っていればそのまま
+function plateNorm(v) {
+  const t = han(String(v ?? "")).trim(); if (!t || !/^[\d\s\-－ー‐・.]+$/.test(t)) return v;
+  const d = t.replace(/\D/g, ""); if (!d || d.length > 4) return v;
+  return d.length >= 3 ? d.slice(0, -2) + "-" + d.slice(-2) : d;
+}
+// 表のいま選んでいる行（候補を会社で絞るため）
+function curRow(key) {
+  const g = grids[key], d = day(); if (!g || !d) return null;
+  const k = key === "gai" ? "外注" : ARR[key];
+  return (d[k] || [])[g.selection().r + pgOff(key)] || null;
+}
 // 名前を入れたら会社（名前一覧）・前に乗った車両名と車番。車両名を入れたら前の車番
 function carFill(s, row, c0) {
   const prev = f => { for (const x of Object.keys(s.日).sort().reverse()) for (const r of (s.日[x].車 || [])) if (r && r !== row && f(r)) return r; return null; };
@@ -766,6 +782,13 @@ function carFill(s, row, c0) {
     if (!row[7] && !c0.includes(7)) { const p = prev(r => nk(r[6]) === nk(row[6]) && r[7]); if (p) { row[7] = p[7]; if (!row[8]) row[8] = p[8] || ""; } }
   }
   if (c0.includes(7) && row[7] && !row[8] && !c0.includes(8)) { const p = prev(r => nk(r[7]) === nk(row[7]) && r[8]); if (p) row[8] = p[8]; }
+  // 自社車両のマスタ（2026-11-17）：車両名が1台だけなら車番を入れる。同じ車両名が何台もあるときは、名前（使う人）が合う1台
+  if ((c0.includes(7) || c0.includes(6)) && row[7] && !row[8] && !c0.includes(8)) {
+    const vs = (MS.自社車両 || []).filter(v => loose(v.車両名) === loose(row[7]));
+    const who = nk(row[6] || ""), byUser = who ? vs.filter(v => v.使用者 && (who.startsWith(nk(v.使用者)) || nk(v.使用者).startsWith(who.slice(0, 2)))) : [];
+    const v = vs.length === 1 ? vs[0] : byUser.length === 1 ? byUser[0] : null;
+    if (v) row[8] = v.車番;
+  }
 }
 // 高速・燃料の1行の金額：実費があればそれ。高速＝区間の単価（通勤費の高速代）×回数（往復は2）、燃料＝材料の単価×リットル
 function carAmount(s, r, date) {
@@ -806,9 +829,14 @@ function rowOp(key, op, r, n) {
 }
 
 // その列の候補（Alt+↓・打ち始めの続き）
-function colWords(key, c) {
-  if (key === "gai") return colWords("dn", c);
+function colWords(key, c, row) {
+  if (key === "gai") return colWords("dn", c, row);
   const s = site(); if (!s) return [];
+  // 会社を先に入れた行は、その会社の人だけを出す（2026-11-17 ユーザー：会社から絞る流れ）。合う人がいなければ全員
+  if (key === "dn" && c === 0 && row && row[12]) {
+    const all = colWords("dn", 0, null), want = loose(row[12]), hit = all.filter(n => loose(companyOf(n, s) || "") === want);
+    return hit.length ? hit : all;
+  }
   const cnt = new Map(), add = (v, w = 1) => { if (v) cnt.set(v, (cnt.get(v) || 0) + w); };
   if (key === "dn" && c === 0) {
     // マスタ（配置表の名簿：社員・従業員・外注業者）＋この現場で使った人。名前の書き方はマスタにそろえる
@@ -827,7 +855,8 @@ function colWords(key, c) {
     if (c === 2) (s.単価 || []).forEach(p => { if (p.分類 === "高速代" && p.名前) add(p.名前, 100); });
     if (c === 5) companies(s).forEach(x => add(x, 100));
     if (c === 6) { s.作業員.forEach(w => add(masterName(w.名前), 100)); MS.社員.forEach(n => add(n, 60)); MS.従業員.forEach(n => add(n, 60)); MS.外注業者.forEach(n => add(n, 20)); }
-    if (c === 7) { s.機材.forEach(m => add(m.名前, 50)); MS.機械.forEach(m => add(m.名前, 30)); }
+    if (c === 7) { (MS.自社車両 || []).forEach(v => add(v.車両名, 80)); s.機材.forEach(m => add(m.名前, 50)); MS.機械.forEach(m => add(m.名前, 30)); }
+    if (c === 8) { const rw = row || {}; (MS.自社車両 || []).filter(v => !rw[7] || loose(v.車両名) === loose(rw[7])).forEach(v => add(v.車番, 80)); }   // 車番：その行の車両名の自社車両（無ければ全部）
   }
   if (key === "dn" && (c === 1 || c === 2)) [s.始業, s.終業, "8:00", "17:00", "18:00", "19:00", "20:00"].forEach(t => add(t, 1));
   if (key === "up" && c === 2) countByShoku(day()).forEach(([k, n]) => add(n + "名", 100));
@@ -896,8 +925,8 @@ function buildSheet() {
       },
       normalize: (c, v) => normalize(cols[c].k, v),
       // 作業内容（上の欄）は自由記入だけ：選択肢・補い・▾ は出さない（2026-10-31 ユーザー）
-      complete: (c, v) => { if (key === "up") return null; const lv = v.toLowerCase(), ws = colWords(key, di(key, c)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
-      list: c => key === "up" ? [] : colWords(key, di(key, c)),
+      complete: (c, v) => { if (key === "up") return null; const lv = v.toLowerCase(), ws = colWords(key, di(key, c), curRow(key)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
+      list: c => key === "up" ? [] : colWords(key, di(key, c), curRow(key)),
       hasList: c => key === "up" ? false : key === "car" ? [0, 1, 2, 5, 6, 7, 8].includes(c) : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
       apply: ch => applyCells(key, ch.map(x => ({ ...x, r: x.r + pgOff(key), c: di(key, x.c) }))),
       undo, redo,
@@ -1396,7 +1425,31 @@ function openSign() {
 })();
 
 /* ================= 小窓：⠿（見出し）で動かす・外を押しても閉じない・後ろをスクロールさせない ================= */
+/* フォームの共通ルール（2026-11-14 利用者指定・2026-11-17 全部の窓に当てはめた）：
+   OK・決める・やめる・閉じる などのボタンはハンドルの右に置き、中身をスクロールしても隠れない。
+   窓の中身のいちばん下のボタンの並び（.btns）の、すき間（.sp）より右のボタンを、開くたびにハンドルへ移す。
+   すき間の無い並びは、後ろの「閉じる系（data-close）」と最後のボタンを移す。中身を作り直す窓（dEdit など）は、開くたびに入れ替える。
+   左側のボタン（マスターを読み直す・前の記入済み など）は中身に残す。閉じる系を移したら、ハンドルの × は隠す（同じボタンが2つになるので） */
+function hoistButtons(d) {
+  const head = d.querySelector(".dhead"), body = d.querySelector(".dbody"); if (!head || !body) return;
+  let box = head.querySelector(".hoist");
+  if (box) for (const c of [...box.children]) { if (c._from) { c._from.appendChild(c); c._from.classList.remove("hoisted"); } else c.remove(); }   // 前に移したボタンを元の並びへ戻してから選び直す（日を選ぶ窓の「消す」のように並びが替わる窓のため）
+  const bars = [...body.querySelectorAll(".btns")].filter(b => !b.hidden && !b.classList.contains("fbar") && !b.classList.contains("cal-actions") && b.id !== "xlsRange");
+  const bar = bars[bars.length - 1], x = head.querySelector(".x");
+  if (x) x.hidden = false;
+  if (!bar) return;
+  const kids = [...bar.children], sp = kids.find(c => c.classList.contains("sp"));
+  let move = sp ? kids.slice(kids.indexOf(sp) + 1) : [];
+  if (!sp) { for (let i = kids.length - 1; i >= 0; i--) { const c = kids[i]; if (c.tagName !== "BUTTON" || (i !== kids.length - 1 && !c.hasAttribute("data-close"))) break; move.unshift(c); } }
+  move = move.filter(c => c.tagName === "BUTTON");
+  if (!move.length) return;
+  if (!box) { box = document.createElement("span"); box.className = "hoist"; head.insertBefore(box, x || null); }
+  move.forEach(c => { c._from = bar; box.appendChild(c); });
+  if (x) x.hidden = move.some(c => c.hasAttribute("data-close"));
+  if (![...bar.children].some(c => !c.classList.contains("sp"))) bar.classList.add("hoisted");   // 中身に残るものが無ければ並びごと詰める（hidden は各画面が使うので触らない）
+}
 function openDlg(d) {
+  hoistButtons(d);
   d.classList.remove("moved"); d.style.left = d.style.top = "";
   const a = document.activeElement; if (a && a !== document.body) a.blur();
   d.showModal(); document.body.classList.add("modal");
@@ -1477,7 +1530,7 @@ function syncMasterSites() {
   if (changed) save();
 }
 function applyMasters(m) {
-  MS = { 現場: m.現場 || [], 社員: m.社員 || [], 従業員: m.従業員 || [], 外注業者: m.外注業者 || [], 機械: m.機械 || [], 退職: m.退職 || {}, 読んだ: m.読んだ || now(), 元: m.元 || "" };
+  MS = { 現場: m.現場 || [], 社員: m.社員 || [], 従業員: m.従業員 || [], 外注業者: m.外注業者 || [], 機械: m.機械 || [], 退職: m.退職 || {}, 自社車両: m.自社車両 || [], 読んだ: m.読んだ || now(), 元: m.元 || "" };
   try { localStorage.setItem(MKEY, JSON.stringify(MS)); } catch (e) {}
   syncMasterSites(); showMstat(); renderAll();
 }
@@ -1502,11 +1555,12 @@ async function loadMasters(quiet) {
   if (!msalApp || !msalApp.getActiveAccount()) return;
   try {
     // 退職者.json（工程データ。工事日報と同じ一覧）：最後の月の次の月から、記入者の候補に出さない（2026-11-17 ユーザー：岡田さんが残っている）
-    const [g, k, w, ret] = await Promise.all([getJSON("kikai", "現場一覧.json"), getJSON("kotei", "マスタ.json"), getJSON("kikai", "稼働データ.json").catch(() => null), getJSON("kotei", "退職者.json").catch(() => null)]);
+    const [g, k, w, ret, cars] = await Promise.all([getJSON("kikai", "現場一覧.json"), getJSON("kotei", "マスタ.json"), getJSON("kikai", "稼働データ.json").catch(() => null), getJSON("kotei", "退職者.json").catch(() => null), getJSON("kotei", "自社車両.json").catch(() => null)]);
     const mk = new Map();
     ((w && w.機械) || []).forEach(x => { if (x && x.名前 && !x.使わない) mk.set(x.名前 + "|" + (x.規格 || ""), { 名前: x.名前, 規格: x.規格 || "" }); });
     applyMasters({ 現場: (g && g.現場) || MS.現場, 社員: (k && k.社員) || MS.社員, 従業員: (k && k.従業員) || MS.従業員, 外注業者: (k && k.外注業者) || MS.外注業者,
       機械: mk.size ? [...mk.values()] : MS.機械, 退職: ret ? Object.fromEntries((ret.人 || []).filter(x => x && x.名前).map(x => [nk(x.名前), x.最後の月 || "0000-00"])) : MS.退職 || {},
+      自社車両: cars ? (cars.車両 || []).filter(x => x && x.車両名) : MS.自社車両 || [],   // 自社車両.json（01_マスタ抽出\自社車両を作る.py。NAS の車検証のファイル名から）
       読んだ: now(), 元: g && g.読んだ ? "現場一覧 " + g.読んだ.slice(0, 16).replace("T", " ") : "" });
     if (!quiet) toast("マスタを読みました");
   } catch (e) {
@@ -1695,12 +1749,12 @@ async function sync() {
     if (commonIt && (!SY.common || SY.common.eTag !== commonIt.eTag)) {
       const r = await store.get("共通.json");
       if (r && r.data) {
-        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.会社一覧 = r.data.会社一覧 || DB.会社一覧; DB.職種別名 = r.data.職種別名 || DB.職種別名; DB.単価たたき台 = r.data.単価たたき台 || DB.単価たたき台; DB.共通更新 = r.data.更新; kouFix(); changed = true; }
+        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.会社一覧 = r.data.会社一覧 || DB.会社一覧; DB.職種別名 = r.data.職種別名 || DB.職種別名; DB.単価たたき台 = r.data.単価たたき台 || DB.単価たたき台; if (r.data.絞り込み) DB.絞り込み = r.data.絞り込み; fixDB(DB); DB.共通更新 = r.data.更新; kouFix(); changed = true; }
         SY.common = { eTag: r.eTag, sent: JSON.stringify(r.data) };
       }
     }
     if (DB.共通更新) {
-      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 会社一覧: DB.会社一覧, 職種別名: DB.職種別名, 単価たたき台: DB.単価たたき台, 更新: DB.共通更新 });
+      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 会社一覧: DB.会社一覧, 職種別名: DB.職種別名, 単価たたき台: DB.単価たたき台, 絞り込み: DB.絞り込み, 更新: DB.共通更新 });
       if (!SY.common || SY.common.sent !== text) {
         try { const r = await store.put("共通.json", text, SY.common && SY.common.eTag); SY.common = { eTag: r.eTag, sent: text }; }
         catch (e) { if (e.status !== 412 && e.status !== 409) throw e; SY.common = null; SY.again = true; }   // ほかの人が先に書いた → 次の回に読み直して合わせる
