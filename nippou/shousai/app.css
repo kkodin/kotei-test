@@ -457,3 +457,5 @@ dialog.swapdlg .dbody p { font-size: 16px; line-height: 1.6; margin: 12px 4px; }
 dialog .dhead .hoist { display: flex; gap: 6px; flex: none; }
 dialog .dhead .hoist button.sub { background: #fff; color: var(--head, #1f3a5f); }
 dialog .btns.hoisted { display: none; }
+.formSel .formFrom { display: block; font-size: 10px; color: #6b7480; font-weight: normal; white-space: nowrap; text-align: right; }   /* 区分がどこから入ったか（2026-11-17） */
+@media print { .formSel .formFrom { display: none; } }

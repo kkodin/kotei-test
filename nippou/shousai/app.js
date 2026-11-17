@@ -994,7 +994,15 @@ function refreshSheet() {
   $("hGen").textContent = gen() ? genName(gen()) : "（現場名から選んでください）";
   $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
-  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s); $("hForm").innerHTML = (v ? "" : `<option value="" selected>選んでください</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s; const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v); }
+  // 区分：現場設定（工事日報で決めた区分）を読み終えるまでは「読み込み中…」（2026-11-17 ユーザー：「選んでください」のあと勝手に常用になったように見えた）。
+  // 現場設定から入った区分は、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる
+  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s), wait = !!s && !v && signedIn() && !FORM_READY;
+    $("hForm").innerHTML = (v ? "" : `<option value="" selected>${wait ? "読み込み中…" : "選んでください"}</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s || wait;
+    const from = s && v && !s.前回形態 && s.形態 === v && s.形態の元 ? s.形態の元 : "";
+    $("hForm").title = from ? `${v}：${from} から入りました。この日だけ変えるときはここで選び直してください` : "";
+    const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v && !wait);
+    let note = $("hFormFrom"); if (!note) { note = document.createElement("small"); note.id = "hFormFrom"; note.className = "formFrom"; $("hForm").closest("label").appendChild(note); }
+    note.textContent = from ? "（" + from + "）" : ""; }
   const w = wd(UI.day);
   $("hWd").textContent = WD[w]; $("hWd").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
   $("hDate").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
@@ -1602,9 +1610,9 @@ async function formGet() {
 const formKey = s => s.コード ? "c:" + s.コード : "n:" + nk(s.略称 || s.名前);
 async function formLoad() {
   if (DEMO || !signedIn()) { FORM_READY = true; askForm(); return; }
-  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (!s.形態 && x && x.形態) { s.形態 = x.形態; ch = true; } }); if (ch) { save(); renderPickers(); refreshSheet(); } }
+  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (!s.形態 && x && x.形態) { s.形態 = x.形態; s.形態の元 = "工事日報の現場設定" + (x.だれ ? "・" + String(x.だれ).replace(/[\s　]/g, "") : "") + (x.更新 ? " " + String(x.更新).slice(0, 10) : ""); ch = true; } }); if (ch) { save(); renderPickers(); } }
   catch (e) { console.warn("現場設定を読めませんでした", e); }
-  finally { FORM_READY = true; askForm(); }
+  finally { FORM_READY = true; refreshSheet(); askForm(); }
 }
 // 区分を決めていない現場を開いたら選ばせる（見るだけのとき・完了した現場は聞かない）
 let FORM_READY = false;
