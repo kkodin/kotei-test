@@ -129,9 +129,10 @@ function ensureDay() {
   return s.日[UI.day];
 }
 // 中身のある日か（空の日は保存しない）
+// 2026-11-18 ユーザー：現場名と記入者が入っていれば、ほかに何も書いていなくても保存する（記入者・（本社）✓ も中身に数える）
 function hasData(d) {
   if (!d) return false;
-  if (d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
+  if (d.担当者 || d.本社 || d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
   return [...d.上, ...d.下, ...(d.外注 || []), ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
 }
 function tidy(d) {
@@ -878,7 +879,7 @@ function setCur(k) {
 }
 function buildSheet() {
   $("sheet").innerHTML = `
-    <div class="ttlRow"><button type="button" class="sub small copyWork" id="bCopyWork" title="ほかの日の 作業予定・作業員・使用機材・材料 をこの日に写す（完了報告は写さない）">作業内容をコピー</button>作　業　日　報<span id="pgNo"></span><label class="formSel" title="この日の仕事が常用か請負か。常用でない日は金額（常用の計算）に入れません">区分 <select id="hForm"></select></label></div>
+    <div class="ttlRow"><button type="button" class="sub small copyWork" id="bCopyWork" title="ほかの日の 作業予定・作業員・使用機材・材料 をこの日に写す（完了報告は写さない）">作業内容をコピー</button>作　業　日　報<span id="pgNo"></span><label class="formSel" title="常用清算で請求を上げる現場（締め日ごとの請求）の日に付けます。付けた日だけ常用の金額に入ります"><input type="checkbox" id="hForm"> 常用</label></div>
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v dpick" id="hDate" title="押すとカレンダーから日を選べます"></td><td class="v" id="hWd"></td>
@@ -977,31 +978,43 @@ function buildSheet() {
     save(); renderTabs(); detailRenderBrowse();
   });
   $("hDate").addEventListener("click", openCal);
+  // 常用 ✓（2026-11-18 ユーザー：区分「選んでください・常用・請負」をやめる。常用清算で請求を上げる現場（締め日ごとの請求）を区別するため、
+  // 常用のときだけ印を付ける。付けない日＝請負（データは前と同じ 日.形態 "常用"／"請負"。集計・金額はそのまま）。先に選ばなくても書ける
   $("hForm").addEventListener("change", () => {
-    const s = site();
-    if (!s) { UI.newForm = $("hForm").value; saveUI(); refreshSheet(); toast("次に「現場名」を押して現場を選んでください", 4000); return; }   // 新規の日報：区分が先（2026-11-17 ユーザー）
+    const s = site(), v = $("hForm").checked ? "常用" : "請負";
+    if (!s) { $("hForm").checked = false; toast("先に「現場名」を押して現場を選んでください", 4000); return; }
     if (!canEdit()) { refreshSheet(); return; }
-    const v = $("hForm").value, d0 = day();
+    const d0 = day();
     if (hasData(d0)) { pushUndo(); d0.形態 = v; d0.更新 = now(); }   // まだ書いていない日は覚えるだけ（書き始めたときに入る）
     s.前回形態 = v; s.設定更新 = now();
-    if (!s.形態) { s.形態 = v; formShare(s); }
     save(); renderPickers(); refreshSheet();
+  });
+  // （本社）✓（2026-11-18 ユーザー：本社勤務だが、この現場の仕事として扱う日。現場名が「本社」のときは出さない）。日.本社 = true
+  document.addEventListener("change", e => {
+    if (e.target.id !== "hHon") return;
+    const s = site(); if (!s) return;
+    if (!canEdit()) { refreshSheet(); return; }
+    pushUndo();
+    const d = ensureDay(); if (e.target.checked) d.本社 = true; else delete d.本社;
+    d.更新 = now(); if (!hasData(d)) dropDay(s, UI.day);
+    save(); renderTabs(); detailRenderBrowse(); refreshSheet();
   });
   hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim()));
 }
 function refreshSheet() {
   detailRenderBrowse();
   const s = site(), d = day();
-  $("hGen").textContent = gen() ? genName(gen()) : "";   // 新規の日報は空欄（2026-11-17 ユーザー）。押すと「現場名を選ぶ」
-  $("hSite").textContent = s ? s.名前 : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）";
+  $("hGen").textContent = gen() ? genName(gen()) : "";   // 元請業者は現場名から出る（2026-11-18 ユーザー：元請は入れなくてよい。押しても何も起きない）
+  // 現場名（押すと「現場名を選ぶ」）。右に（本社）✓（現場名が本社のときは出さない）
+  { const hon = s && !isHonshaSite(s), on = !!(d && d.本社);
+    $("hSite").innerHTML = s ? esc(s.名前) + (hon ? `<label class="honChk${on ? " on" : ""}" title="本社勤務だが、この現場の仕事として扱う日に付けます（工事日報では「本社（${esc(s.略称 || s.名前)}）」）"><input type="checkbox" id="hHon"${on ? " checked" : ""}${RO ? " disabled" : ""}>（本社）</label>` : "") : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）"; }
   $("hDate").textContent = jpDate(UI.day);
-  // 区分：現場設定（工事日報で決めた区分）を読み終えるまでは「読み込み中…」（2026-11-17 ユーザー：「選んでください」のあと勝手に常用になったように見えた）。
-  // 現場設定から入った区分は、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる
-  { const v = !s ? (UI.newForm || "") : hasData(d) ? formOf(s, UI.day) : nextForm(s), wait = !!s && !v && signedIn() && !FORM_READY;
-    $("hForm").innerHTML = (v ? "" : `<option value="" selected>${wait ? "読み込み中…" : "選んでください"}</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = wait;   // 現場を選ぶ前でも区分は選べる（新規の日報は区分が先）
+  // 常用 ✓（2026-11-18）。現場設定（工事日報で決めた区分）から入ったときは、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる。本社では出さない
+  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s);
+    $("hForm").checked = v === "常用"; $("hForm").disabled = !s;
     const from = s && v && !s.前回形態 && s.形態 === v && s.形態の元 ? s.形態の元 : "";
-    $("hForm").title = from ? `${v}：${from} から入りました。この日だけ変えるときはここで選び直してください` : "";
-    const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !v && !wait); document.body.classList.toggle("needForm", !v && !wait);
+    $("hForm").closest("label").title = from ? `${v}：${from} から入りました。この日だけ変えるときは付け直してください` : "常用清算で請求を上げる現場（締め日ごとの請求）の日に付けます。付けた日だけ常用の金額に入ります";
+    const L = $("hForm").closest("label").classList; L.toggle("on", v === "常用"); L.toggle("hide", !!s && isHonshaSite(s)); document.body.classList.remove("needForm");
     let note = $("hFormFrom"); if (!note) { note = document.createElement("small"); note.id = "hFormFrom"; note.className = "formFrom"; $("hForm").closest("label").appendChild(note); }
     note.textContent = from ? "（" + from + "）" : ""; }
   const w = wd(UI.day);
@@ -1539,6 +1552,9 @@ function siteMatch(name, m) {
   const f = nk(m.正式名), r = nk(m.名前);
   return a === f || a === r || (r.length >= 3 && a.includes(r)) || (f.length >= 6 && (a.includes(f) || f.includes(a)));
 }
+// 本社の「現場」（どの端末でも同じ id。共有の 現場_c_honsha.json になる）
+const HONSHA_ID = "c_honsha";
+const isHonshaSite = s => !!s && (s.id === HONSHA_ID || (!s.コード && nk(s.名前) === nk("本社")));
 // 現場一覧の現場を、このブラウザの元請・現場に入れる（日報のある現場は名前で結び付ける。入っている値は変えない）
 function syncMasterSites() {
   const lim = addD(ymd(new Date()), -400);
@@ -1549,8 +1565,10 @@ function syncMasterSites() {
     if (!g) { g = { id: "g_" + k, 名前: name || "（元請なし）" }; DB.元請.push(g); changed = true; }
     return g;
   };
+  // 本社（2026-11-18 ユーザー：本社勤務の日報も書けるように、現場名に「本社」を置く。元請は「自社」）
+  if (!DB.現場.some(isHonshaSite)) { DB.現場.push(fixSite({ id: HONSHA_ID, 元請id: genOf("自社").id, 名前: "本社", 略称: "本社", 設定更新: now() })); changed = true; }
   for (const m of MS.現場) {
-    let s = DB.現場.find(x => x.コード && x.コード === m.コード) || DB.現場.find(x => !x.コード && siteMatch(x.名前, m));
+    let s = DB.現場.find(x => x.コード && x.コード === m.コード) || DB.現場.find(x => !x.コード && !isHonshaSite(x) && siteMatch(x.名前, m));
     const recent = !m.工期至 || m.工期至 >= lim;
     if (!s && !recent) continue;
     const g = genOf(m.元請);
@@ -1639,6 +1657,7 @@ async function formLoad() {
 // 区分を決めていない現場を開いたら選ばせる（見るだけのとき・完了した現場は聞かない）
 let FORM_READY = false;
 function askForm() {
+  return;   // 2026-11-18 ユーザー：区分を選ばせる窓はやめた（常用 ✓ だけ）
   const s = site(), D = $("dForm");
   if (!s || s.形態 || s.完了 || D.open || !canEdit() || (signedIn() && !FORM_READY)) return;
   $("fmSite").textContent = siteLabel(s);
@@ -1848,7 +1867,8 @@ const myKey = () => { const a = msalApp && msalApp.getActiveAccount(); return a 
 const samePerson = by => !!by && (by.端末 === ME.端末 || (by.人 ? by.人 === myKey() : nk(by.名前) === nk(ME.名前)));
 const hm = t => { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
 // 区分が決まっていない日は、区分を先に選ぶ（2026-11-17 ユーザー：区分を最初に指定しないと何もいじれない。点滅で目立たせる）
-function formMissing() { const s = site(), d = day(); if (!s) return !UI.newForm; return !(hasData(d) ? formOf(s, UI.day) : nextForm(s)); }
+// 2026-11-18 ユーザー：区分を先に選ばせるのをやめた（常用 ✓ だけ。付けなければ請負）→ いつも「決まっている」
+function formMissing() { return false; }
 function blinkForm() { const L = $("hForm").closest("label"); L.classList.remove("blink"); void L.offsetWidth; L.classList.add("blink"); }
 function canEdit() {
   if (formMissing() && (site() ? FORM_READY || !signedIn() : true)) { toast("先に右上の「区分」（常用・請負）を選んでください", 4000); blinkForm(); return false; }
