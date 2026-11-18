@@ -53,7 +53,7 @@ const S = {
   me: ""
 };
 function blank() {
-  return { id: uid(), 日付: today(), 勤務: "昼", 元請: "", 現場: "", 記入者: S.me, 区分: "", 天気: "", 気温: "",
+  return { id: uid(), 日付: today(), 勤務: "昼", 元請: "", 現場: "", 記入者: S.me, 区分: "請負", 天気: "", 気温: "",
     作業: [{ 予定: "", 報告: "" }], 作業員: [], 機械: [], 材料: [], 外注: [], 車: [], 更新: "" };
 }
 const recs = () => { try { return (JSON.parse(localStorage.getItem(LKEY)) || {}).recs || []; } catch (e) { return []; } };
@@ -78,13 +78,41 @@ function companies() {
 // その会社の人だけ（ほかの会社の人は出さない）
 const membersOf = co => S.people.filter(p => p.区分 === "外注" && nk(p.会社) === nk(co) && HX.activeOn(p, ym())).map(p => ({ 名前: p.名前, かな: p.ふりがな || "" }));
 const companyOfPerson = n => { const p = S.people.find(x => nk(x.名前) === nk(n)); return p ? (p.区分 === "外注" ? p.会社 || "" : SELF) : null; };
+// 現場の候補。2026-11-18 ユーザー：候補が多くてわかりにくい → 現場一覧・マスタ・全体工程の同じ現場は1つにまとめる
+// （名前がほぼ同じ＝片方がもう片方を含む ものも同じ現場。名前は現場一覧 → マスタ → 全体工程 の順で先に出たもの）
+const sameSite = (a, b) => { a = nk(a); b = nk(b); return !!a && !!b && (a === b || (Math.min(a.length, b.length) >= 3 && (a.includes(b) || b.includes(a)))); };
 function siteNames() {
-  const m = new Map();
-  const add = (名前, 元請, 元) => { if (!名前) return; const k = nk(名前); const x = m.get(k) || { 名前, 元請: "", 元: [] }; if (元請 && !x.元請) x.元請 = 元請; if (!x.元.includes(元)) x.元.push(元); m.set(k, x); };
-  S.sites.forEach(s => add(s.名前, "", "工程"));
+  const out = [];
+  const add = (名前, 元請, 元, x0) => {
+    if (!名前) return;
+    let x = out.find(s => sameSite(s.名前, 名前));
+    if (!x) { x = { 名前, 元請: "", 元: [], 工期自: "", 工期至: "" }; out.push(x); }
+    if (元請 && !x.元請) x.元請 = 元請;
+    if (!x.元.includes(元)) x.元.push(元);
+    if (x0 && x0.工期自 && !x.工期自) { x.工期自 = x0.工期自; x.工期至 = x0.工期至 || ""; }
+  };
+  S.genba.forEach(g => add(g.名前 || g.正式名, g.元請 || "", "現場一覧", g));
   S.M.現場.forEach(s => add(s.名前, s.元請 || "", "マスタ"));
-  S.genba.forEach(g => add(g.名前 || g.正式名, g.元請 || "", "現場一覧"));
-  return [...m.values()];
+  S.sites.forEach(s => add(s.名前, "", "工程"));
+  return out;
+}
+// その日に全体工程表で工程がある現場か（休みの日は除く）
+const workingOn = (name, k) => S.sites.some(s => sameSite(s.名前, name) && (s.バー || []).some(b => b.開始 <= k && k <= b.終了 && !(b.休み || []).includes(k)));
+// 現場を選ぶ窓のまとまり：その日に工程がある → 前に書いた → 工期中 → ほか（押したときだけ出す）。元請を選んでいれば、その元請の現場だけを上に
+function siteGroups(r) {
+  const all = siteNames(), k = r.日付, seen = new Set(), sub = s => s.元請 || "";
+  const moto = r.元請 && S.autoMoto !== r.id ? r.元請 : "";   // 現場を選んだときに自動で入った元請では絞らない（選び直しやすく）
+  const take = (name, list, fold) => { const items = list.filter(s => !seen.has(s)); items.forEach(s => seen.add(s)); return items.length ? { name, fold, items: items.map(s => ({ v: s.名前, sub: sub(s) })) } : null; };
+  const pool = moto ? all.filter(s => nk(s.元請) === nk(moto)) : all;
+  const used = []; recs().slice().sort((a, b) => String(b.更新).localeCompare(String(a.更新))).forEach(x => { const s = pool.find(y => sameSite(y.名前, x.現場)); if (s && !used.includes(s) && used.length < 6) used.push(s); });
+  const g = [
+    take(jpd(k) + " に全体工程表で工程がある現場", pool.filter(s => workingOn(s.名前, k))),
+    take("前に書いた現場", used),
+    take("工期中の現場", pool.filter(s => s.工期自 && s.工期自 <= k && (!s.工期至 || k <= s.工期至))),
+    take(moto ? moto + " のほかの現場" : "ほかの現場（工期の外・工期の分からないもの）", pool, true)
+  ];
+  if (moto) g.push(take("ほかの元請の現場", all, true));
+  return g.filter(Boolean);
 }
 const motoList = () => [...new Set(siteNames().map(s => s.元請).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
 // 使ったことのある値（このブラウザの保存から）：材料名・区間・工種 など
@@ -176,9 +204,12 @@ function pick(o) {
   const all = o.groups.flatMap(g => g.items);
   const useKana = all.length > 24 && all.some(x => x.kana);
   let kana = "";
+  const opened = new Set();   // たたんだまとまり（fold）のうち、開いたもの
   const draw = () => {
     const chips = g => g.items.filter(x => !kana || kanaRow(x.kana) === kana).map(x => `<button type="button" data-v="${esc(x.v)}" class="${sel.has(x.v) || (!o.multi && x.v === o.value) ? "on" : ""} ${x.used ? "used" : ""}" ${x.used ? 'title="もう入っています"' : ""}>${esc(x.label || x.v)}${x.sub ? `<small> ${esc(x.sub)}</small>` : ""}</button>`).join("");
-    const body = o.groups.map(g => { const c = chips(g); return c ? (g.name ? `<div class="grp">${esc(g.name)}</div>` : "") + `<div class="chips">${c}</div>` : ""; }).join("") || `<div class="empty">${esc(o.empty || "候補がありません")}</div>`;
+    const body = o.groups.map((g, gi) => { const c = chips(g); if (!c) return "";
+      if (g.fold && !opened.has(gi) && !g.items.some(x => x.v === o.value)) return `<div class="free"><button type="button" class="sub" data-fold="${gi}">${esc(g.name)}を出す（${g.items.length}）</button></div>`;
+      return (g.name ? `<div class="grp">${esc(g.name)}</div>` : "") + `<div class="chips">${c}</div>`; }).join("") || `<div class="empty">${esc(o.empty || "候補がありません")}</div>`;
     $("sBody").innerHTML = (o.note ? `<div class="hint">${o.note}</div>` : "") +
       (useKana ? `<div class="kana">${["", ...KANA, "他"].map(k => `<button type="button" data-kana="${k}" class="${k === kana ? "on" : ""}">${k || "全部"}</button>`).join("")}</div>` : "") + body +
       (o.clear && !o.multi && o.value ? `<div class="free"><button type="button" class="sub" data-clear="1">空にする</button></div>` : "") +
@@ -188,6 +219,7 @@ function pick(o) {
   draw();
   $("sBody").onclick = e => {
     const k = e.target.closest("[data-kana]"); if (k) { kana = k.dataset.kana; draw(); return; }
+    const fd = e.target.closest("[data-fold]"); if (fd) { opened.add(+fd.dataset.fold); draw(); return; }
     if (e.target.closest('[data-act2="chgco"]') && o.chgco) { closeSheet(); o.chgco(); return; }
     if (e.target.closest("[data-clear]")) { o.done(""); closeSheet(); return; }
     if (e.target.closest("[data-free]")) { $("freeBox").hidden = false; $("freeIn").focus(); return; }   // ここで初めてキーボード
@@ -206,7 +238,7 @@ function render() {
   document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === S.mode));
   const n = { sagyo: r.作業.filter(w => w.予定 || w.報告).length, hito: r.作業員.length, kikai: r.機械.length, zai: r.材料.length, gai: r.外注.length, car: r.車.length };
   document.querySelectorAll("#tabs button").forEach(b => { b.classList.toggle("on", b.dataset.tab === S.tab); const c = n[b.dataset.tab]; b.innerHTML = b.textContent.replace(/\d+$/, "") + (c ? `<span class="n">${c}</span>` : ""); });
-  $("cur").innerHTML = `<b>${jpd(r.日付)}</b>　${r.勤務}　${r.現場 ? `<b>${esc(r.現場)}</b>` : '<span class="ng">現場を選んでください</span>'}　${r.区分 ? esc(r.区分) : '<span class="ng">区分を選んでください</span>'}${S.dirty ? "　<small>（保存していません）</small>" : ""}`;
+  $("cur").innerHTML = `<b>${jpd(r.日付)}</b>　${r.勤務}　${r.現場 ? `<b>${esc(r.現場)}</b>` : '<span class="ng">現場を選んでください</span>'}　${r.区分 === "常用" ? "<b>常用</b>" : "請負"}${S.dirty ? "　<small>（保存していません）</small>" : ""}`;
   $("pane").innerHTML = ({ kihon, sagyo, hito, kikai, zai, gai, car })[S.tab](r);
 }
 const fh = (t, req, note, right) => `<div class="fh">${t}${req ? ' <span class="req">＊</span>' : ""}${note ? ` <span class="note">${note}</span>` : ""}${right ? `<span class="r">${right}</span>` : ""}</div>`;
@@ -219,7 +251,7 @@ function kihon(r) {
   return fh("日付", true) + `<div class="fv"><div class="row2"><input type="date" data-l="" data-f="日付" value="${r.日付}"><div>${segH("勤務", ["昼", "夜"], r.勤務)}</div></div><div class="hint">昼夜は、作業員・外注を足すときの始めの値（人ごとに変えられます）。</div></div>` +
     fh("元請業者") + `<div class="fv">${pkBtn(r.元請, "押して選ぶ", 'data-act="pickMoto"')}</div>` +
     fh("現場名", true) + `<div class="fv">${pkBtn(r.現場, "押して選ぶ", 'data-act="pickSite"', !r.現場)}</div>` +
-    fh("区分", true, "常用か請負か") + `<div class="fv">${segH("区分", ["常用", "請負"], r.区分)}</div>` +
+    fh("区分", false, "常用の日だけ印を付ける。付けない日＝請負") + `<div class="fv"><button type="button" class="chk ${r.区分 === "常用" ? "on" : ""}" data-act="joyo" aria-pressed="${r.区分 === "常用"}">${r.区分 === "常用" ? "✅" : "☐"} 常用</button></div>` +
     fh("天気") + `<div class="fv">${segH("天気", WX, r.天気)}</div>` +
     fh("気温", false, "℃") + `<div class="fv" style="max-width:160px">${num("", "", "気温", r.気温, "例 12")}</div>` +
     fh("記入者") + `<div class="fv">${pkBtn(r.記入者, "押して選ぶ", 'data-act="pickMe"')}</div>` +
@@ -326,12 +358,20 @@ $("pane").addEventListener("click", e => {
       if (!n) { toast("写す作業予定がありません（完了報告が空の行だけ写します）"); return; }
       r.作業.forEach(w => { if (w.予定 && !w.報告) w.報告 = w.予定; }); touch(); render(); toast(n + "行を完了報告へ写しました"); return;
     }
+    // 2026-11-18 ユーザー：常用・請負を選ばせるのをやめ、常用の印だけ（触らなければ請負のまま次に進める）
+    case "joyo": r.区分 = r.区分 === "常用" ? "請負" : "常用"; S.autoJoyo = null; touch(); render(); return;
     case "addSagyo": r.作業.push({ 予定: "", 報告: "" }); touch(); render(); return;
-    case "pickMoto": return pick({ title: "元請業者", groups: [{ items: motoList().map(v => ({ v })) }], value: r.元請, clear: true, free: true, empty: "元請の一覧がありません", done: v => { r.元請 = v; touch(); render(); } });
+    case "pickMoto": return pick({ title: "元請業者", groups: [{ items: motoList().map(v => ({ v })) }], value: r.元請, clear: true, free: true, empty: "元請の一覧がありません", done: v => { r.元請 = v; S.autoMoto = null; touch(); render(); } });
     case "pickSite": {
-      const all = siteNames(), mine = r.元請 ? all.filter(s => nk(s.元請) === nk(r.元請)) : [];
-      const groups = r.元請 ? [{ name: r.元請 + " の現場", items: mine.map(s => ({ v: s.名前 })) }, { name: "ほかの現場", items: all.filter(s => !mine.includes(s)).map(s => ({ v: s.名前, sub: s.元請 })) }] : [{ items: all.map(s => ({ v: s.名前, sub: s.元請 })) }];
-      return pick({ title: "現場名", groups, value: r.現場, free: true, done: v => { r.現場 = v; const s = all.find(x => x.名前 === v); if (s && s.元請 && !r.元請) r.元請 = s.元請; touch(); render(); } });
+      const all = siteNames();
+      return pick({ title: "現場名", groups: siteGroups(r), value: r.現場, free: true, done: v => {
+        r.現場 = v; const s = all.find(x => x.名前 === v); if (s && s.元請 && (!r.元請 || S.autoMoto === r.id)) { r.元請 = s.元請; S.autoMoto = r.id; }
+        // 常用かどうかは、この現場で前に書いた日報と同じにする（PC の詳細日報の「前回の設定を保持」と同じ考え）
+        const last = recs().filter(x => x.id !== r.id && sameSite(x.現場, v)).sort((a, b) => String(b.更新).localeCompare(String(a.更新)))[0];
+        if (last) { r.区分 = last.区分 === "常用" ? "常用" : "請負"; S.autoJoyo = r.id; }
+        else if (S.autoJoyo === r.id) { r.区分 = "請負"; S.autoJoyo = null; }   // 前の現場から自動で入れた印は持ち越さない
+        touch(); render();
+      } });
     }
     case "pickMe": { const a = own(); return pick({ title: "記入者", groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => ({ v: p.名前, kana: p.かな })) })), value: r.記入者, done: set(r, "記入者") }); }
     case "addHito": return pickWorkers();
@@ -406,7 +446,7 @@ function toForm(r) {
   }
   const 外注 = r.外注.map(w => { const row = Array(16).fill(""); row[0] = w.名前; row[1] = w.始業; row[2] = w.終業; row[3] = w.工種; row[4] = w.残 || zan(w.始業, w.終業, w.昼夜); row[12] = w.会社; row[14] = w.昼夜; return row; });
   const 車 = r.車.map(c => [c.種類, c.種類 === "高速" ? c.往復 : "", c.種類 === "高速" ? c.区間 : "", c.種類 === "高速" ? "" : c.給油, c.実費, c.会社, c.名前, c.車両名, c.車番, c.メモ]);
-  return { 元請業者: r.元請, 現場名: r.現場, 日付: r.日付, 日: { 天気: r.天気, 気温: r.気温, 担当者: r.記入者, 形態: r.区分, 上, 下, 外注, 車 } };
+  return { 元請業者: r.元請, 現場名: r.現場, 日付: r.日付, 日: { 天気: r.天気, 気温: r.気温, 担当者: r.記入者, 形態: r.区分 === "常用" ? "常用" : "請負", 上, 下, 外注, 車 } };
 }
 function showForm() {
   const f = toForm(S.rec), d = f.日;
@@ -416,7 +456,7 @@ function showForm() {
     <div class="hint">PC の作業日報と同じ並びです（列の名前も同じ）。この形で詳細日報に入れられます。</div>
     <div class="tw"><table class="kv"><tr><td>元請業者</td><td>${esc(f.元請業者)}</td><td>日付</td><td>${esc(f.日付)}（${WD[dateOf(f.日付).getDay()]}）</td></tr>
     <tr><td>現場名</td><td>${esc(f.現場名)}</td><td>天気・気温</td><td>${esc(d.天気)} ${d.気温 ? esc(d.気温) + "℃" : ""}</td></tr>
-    <tr><td>記入者</td><td>${esc(d.担当者)}</td><td>区分</td><td>${esc(d.形態 || "選んでください")}</td></tr></table></div>
+    <tr><td>記入者</td><td>${esc(d.担当者)}</td><td>区分</td><td>${esc(d.形態 === "常用" ? "常用" : "請負")}</td></tr></table></div>
     <h3>作業予定・完了報告</h3>${tb(["作業予定", "完了報告"], d.上.map(r => [r[1], r[4]]))}
     <h3>作業員・使用機材・材料</h3>${tb(DN.map(x => x[1]), d.下.map(r => DN.map(x => r[x[0]])))}
     <h3>外注</h3>${tb(["会社", "作業員名", "昼夜", "始業時間", "終業時間", "工種", "残"], d.外注.map(r => [r[12], r[0], r[14], r[1], r[2], r[3], r[4]]))}
@@ -429,7 +469,6 @@ $("bForm").onclick = showForm;
 function problems(r) {
   const p = [];
   if (!r.現場) p.push("現場名を選んでください");
-  if (!r.区分) p.push("区分（常用・請負）を選んでください");
   r.作業員.forEach((w, i) => { const e = rowErr("作業員", w, i); if (e) p.push("作業員 " + (w.名前 || (i + 1) + "人目") + "：" + e); });
   r.外注.forEach((w, i) => { const e = rowErr("外注", w, i); if (e) p.push("外注 " + (w.名前 || (i + 1) + "人目") + "：" + e); });
   return p;
@@ -446,7 +485,7 @@ $("bSave").onclick = () => {
 $("bList").onclick = () => {
   const a = recs().sort((x, y) => (y.日付 + y.更新).localeCompare(x.日付 + x.更新));
   openSheet("保存した日報（このブラウザ）", `<div class="list"><button type="button" class="pri small" data-new="1" style="margin:6px 0">＋ 新しく書く</button>` +
-    (a.map(r => `<div class="it"><div class="tx" data-open="${r.id}"><b>${jpd(r.日付)} ${esc(r.勤務)}</b> ${esc(r.現場)}${r.作業.some(w => w.予定) ? '<span class="tag y">予定</span>' : ""}${r.作業.some(w => w.報告) ? '<span class="tag h">報告</span>' : ""}<small>${esc(r.区分)}　作業員 ${r.作業員.length}・外注 ${r.外注.length}　${esc(r.更新)}</small></div><button type="button" class="sub small" data-delrec="${r.id}">消す</button></div>`).join("") || `<div class="empty">まだありません</div>`) + `</div>`);
+    (a.map(r => `<div class="it"><div class="tx" data-open="${r.id}"><b>${jpd(r.日付)} ${esc(r.勤務)}</b> ${esc(r.現場)}${r.作業.some(w => w.予定) ? '<span class="tag y">予定</span>' : ""}${r.作業.some(w => w.報告) ? '<span class="tag h">報告</span>' : ""}<small>${r.区分 === "常用" ? "常用" : "請負"}　作業員 ${r.作業員.length}・外注 ${r.外注.length}　${esc(r.更新)}</small></div><button type="button" class="sub small" data-delrec="${r.id}">消す</button></div>`).join("") || `<div class="empty">まだありません</div>`) + `</div>`);
   $("sBody").onclick = e => {
     const leave = () => !S.dirty || confirm("いま書いている日報は保存していません。やめて開きますか？");
     if (e.target.closest("[data-new]")) { if (!leave()) return; S.rec = blank(); S.dirty = false; S.tab = "kihon"; closeSheet(); render(); return; }
@@ -463,7 +502,8 @@ function seedDemo() {   // 試し：作りものの名前・会社（公開の�
   const k = today(), P = (名前, ふりがな, 区分, 会社) => ({ 名前, ふりがな, 区分, 会社 });
   const a = {
     "マスタ.json": { 社員: ["試し　太郎", "試し　次郎"], 従業員: ["見本　一郎", "見本　二郎", "見本　三郎"], 外注業者: ["Ａ工業", "Ｂ建設", "Ｃ組"],
-      現場: [{ 名前: "A現場 配水管", 元請: "甲建設" }, { 名前: "B現場 道路改良", 元請: "乙土木" }, { 名前: "C現場 下水", 元請: "甲建設" }] },
+      現場: [{ 名前: "A現場 配水管", 元請: "甲建設" }, { 名前: "B現場 道路改良", 元請: "乙土木" }, { 名前: "C現場 下水", 元請: "甲建設" },
+        { 名前: "D現場 舗装", 元請: "乙土木" }, { 名前: "E現場 水道", 元請: "丙工務" }, { 名前: "F現場 造成", 元請: "丙工務" }, { 名前: "G現場 護岸", 元請: "甲建設" }] },
     "マスタ/人.json": { 形式: "人", 人: [P("試し　太郎", "ためし　たろう", "社員", ""), P("試し　次郎", "ためし　じろう", "社員", ""), P("見本　一郎", "みほん　いちろう", "従業員", ""), P("見本　二郎", "みほん　じろう", "従業員", ""), P("見本　三郎", "みほん　さぶろう", "従業員", ""),
       P("例題　太郎", "れいだい　たろう", "外注", "Ａ工業"), P("例題　次郎", "れいだい　じろう", "外注", "Ａ工業"), P("見積　一夫", "みつもり　かずお", "外注", "Ｂ建設"), P("見積　二夫", "みつもり　つぎお", "外注", "Ｂ建設"), P("仮名　五郎", "かめい　ごろう", "外注", "Ｃ組")] },
     "現場_s1.json": { id: "s1", 名前: "A現場 配水管", 段: [{ id: "l1", 名前: "昼間", 社員: ["試し　太郎"] }, { id: "l2", 名前: "昼間 掘削", 種別: "外注", 業者: "Ａ工業", 人数: "2" }, { id: "l3", 名前: "夜間", 社員: ["試し　次郎"], 業者: "Ｂ建設", 外注人数: "2" }],

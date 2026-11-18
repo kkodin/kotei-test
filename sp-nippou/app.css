@@ -121,3 +121,6 @@ label.lb { display: block; font-size: 12px; color: #666; margin: 6px 0 2px; }
 .hbtn { white-space: nowrap; flex: none; }
 #top .ver { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #top .appTitle { flex: none; }
+/* 常用の印（2026-11-18：常用・請負を選ぶのをやめ、常用の日だけ印。付けなければ請負） */
+.chk { padding: 9px 16px; border: 1px solid #bbb; border-radius: 18px; background: #fff; font-size: 16px; }
+.chk.on { background: #fff4ea; border-color: var(--or); color: #b45309; font-weight: 700; }
