@@ -16,6 +16,8 @@ window.HX = window.HX || {};
     { id: "haichi", name: "配置表", path: "haichi/", title: "配置表（見るだけ）" },
     { id: "meibo", name: "名簿", path: "meibo/", title: "人の名簿（確かめる・直す・足す・退職）" }
   ];
+  // テストの置き場（kotei-test・手元）だけの試作（2026-11-18 ユーザー）。本番には出さない
+  if (/\/kotei-test\//.test(HX.root) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) HX.APPS.push({ id: "spnippou", name: "日報スマホ", path: "sp-nippou/", title: "日報スマホ（試作。保存はこのブラウザだけ）" });
   HX.demo = new URLSearchParams(location.search).has("demo");
   HX.appUrl = function (id, query) {
     const a = HX.APPS.find(x => x.id === id); if (!a) throw new Error("アプリが無い：" + id);

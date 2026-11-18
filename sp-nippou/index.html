@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日報スマホ（試作）</title>
+<link rel="icon" href="../nippou/icon-192.png">
+<link rel="stylesheet" href="app.css?v=202611181559">
+</head>
+<body>
+<!-- 工事日報のスマホ入力（試作 2026-11-18 ユーザー：PC の作業日報と同じ中身をスマホで打てるように。タブで分ける・予定か報告か・全体工程からの入力支援・外注は会社から名前）
+     保存はこのブラウザの中だけ（本物の日報には書かない）。マスタ・工程はサインインして読む（テストの置き場なら 99_テスト）。 -->
+<header id="top">
+  <button type="button" class="appTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">日報スマホ（試作）</button>
+  <span id="ver" class="ver">試作 11/18 15:59（テスト）</span>
+  <button type="button" id="bList" class="hbtn" title="このブラウザに保存した日報">一覧</button>
+</header>
+
+<section id="signin" class="signin" hidden>
+  <p>会社の Microsoft アカウントでサインインすると、現場・名簿・全体工程を読みます（読むだけ。日報はこのブラウザの中に保存）。</p>
+  <button id="bSignIn" type="button" class="pri">サインイン</button>
+  <p><a id="aDemo" href="?demo">サインインせずに試す（作りものの名前）</a></p>
+</section>
+
+<main id="app" hidden>
+  <div class="mode" id="mode" role="tablist" title="作業予定を書くか、完了報告を書くか">
+    <button type="button" data-mode="予定" class="on">予定</button>
+    <button type="button" data-mode="報告">報告</button>
+  </div>
+  <div class="cur" id="cur"></div>
+  <nav class="tabs" id="tabs">
+    <button type="button" data-tab="kihon" class="on">基本</button>
+    <button type="button" data-tab="sagyo">作業</button>
+    <button type="button" data-tab="hito">作業員</button>
+    <button type="button" data-tab="kikai">機械</button>
+    <button type="button" data-tab="zai">材料</button>
+    <button type="button" data-tab="gai">外注</button>
+    <button type="button" data-tab="car">高速・燃料</button>
+  </nav>
+  <div id="pane" class="pane"></div>
+</main>
+
+<footer id="act" class="act" hidden>
+  <button type="button" id="bForm" class="sub">作業日報の形で見る</button>
+  <button type="button" id="bSave" class="pri">保存する</button>
+</footer>
+
+<!-- 下から出る窓（ボタンは上にいつも出す。外を押しても閉じない） -->
+<div id="sheet" class="sheet" hidden>
+  <div class="shead"><b id="sTitle"></b><span class="sp"></span><button type="button" id="sOk" class="pri small">決める</button><button type="button" id="sClose" class="sub small">閉じる</button></div>
+  <div id="sBody" class="sbody"></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="../common/lib/msal-browser.min.js"></script>
+<script src="../common/config.js?v=202611181559"></script>
+<script src="../common/auth.js?v=202611181559"></script>
+<script src="../common/store.js?v=202611181559"></script>
+<script src="../common/apps.js?v=202611181559"></script>
+<script src="../common/master.js?v=202611181559"></script>
+<script src="../common/appmenu.js?v=202611181559"></script>
+<script src="app.js?v=202611181559"></script>
+</body>
+</html>

@@ -19,6 +19,9 @@
     // 2026-11-18 ユーザー：マスターを直す仕組みもここから開く。社員は名簿の人しか選べないので、新しい人はここで足す
     { name: "名簿（人のマスター）", path: "meibo/", note: "人を確かめる・直す・足す・退職" }
   ];
+  // テストの置き場（kotei-test・手元）だけに出す試作（2026-11-18 ユーザー：スマホ用の日報入力をランチャーから試す）。本番には出さない
+  const TEST = /\/kotei-test\//.test(ROOT) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  if (TEST) APPS.push({ name: "日報スマホ（試作）", path: "sp-nippou/", note: "スマホで作業日報を打つ試し（保存はこのブラウザだけ）" });
   const demo = new URLSearchParams(location.search).has("demo");
   const urlOf = a => new URL(a.path + (demo ? "?demo" : ""), ROOT).href;
   // いまのアプリ：アドレスがいちばん長く当てはまるもの（nippou/shousai/ は nippou/ より先）
