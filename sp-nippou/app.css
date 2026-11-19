@@ -158,3 +158,74 @@ label.lb { display: block; font-size: 12px; color: #666; margin: 6px 0 2px; }
 .mline .tg { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef2f6; color: #1f3a5f; margin-right: 4px; }
 .mline .tg.l { background: #fff0e0; color: #b45309; }
 .kouho { margin-top: 4px; }
+
+/* 基本タブ：見出しと入力欄を同じ行に（2026-11-19 行の節約） */
+.frs { padding: 4px 0; }
+.fr { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #eee; }
+.fr .fl { flex: 0 0 64px; font-size: 14px; font-weight: 700; line-height: 1.25; }
+.fr .fl .req { color: #e33; font-size: 12px; margin-left: 2px; }
+.fr .fc { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.fr .fc > input[type=date] { flex: 1; min-width: 0; }
+.fr .fc > .pk { flex: 1; min-width: 0; }
+.fr .fc > .chk { flex: 0 0 auto; padding: 9px 10px; white-space: nowrap; }
+.fr .fc .seg { flex-wrap: nowrap; gap: 4px; }
+.fr .fc .seg button { padding: 8px 12px; }
+.fr.tm .fc > input[type=time] { flex: 1; min-width: 0; }
+.fr .til { color: #666; flex: 0 0 auto; }
+.fr.wx .fc .seg { flex-wrap: wrap; }
+.fr.wx .fc .seg button { padding: 6px 10px; font-size: 14px; }
+.fr.kion .fc > input { max-width: 100px; }
+.fhint { font-size: 11.5px; color: #777; padding: 2px 12px 6px 84px; line-height: 1.45; border-bottom: 1px solid #eee; }
+
+/* 天気（5つの印）・気温（縦に送る窓） 2026-11-19 */
+.fr.wx .fc { flex-wrap: wrap; gap: 4px; }
+.chk.wxb { padding: 7px 8px; font-size: 14px; }
+.pk.kionb { max-width: 140px; }
+.wheel { position: relative; height: 220px; max-width: 220px; margin: 8px auto; }
+.wbar { position: absolute; left: 0; right: 0; top: 88px; height: 44px; background: #fff4ea; border-top: 2px solid var(--or); border-bottom: 2px solid var(--or); pointer-events: none; }
+.wlist { position: relative; height: 220px; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.wpad { height: 88px; }
+.wi { height: 44px; line-height: 44px; text-align: center; font-size: 19px; color: #aaa; scroll-snap-align: center; user-select: none; }
+.wi.on { color: #222; font-size: 24px; font-weight: 700; }
+.wi small { font-size: 13px; }
+
+/* 作業員カード（行の節約：名前｜工種／時間・残／作業内容） */
+.card.pc { padding: 6px 8px 8px; }
+.pr1 { display: flex; gap: 6px; align-items: center; }
+.pr1 .pk { min-height: 40px; padding: 6px 24px 6px 8px; }
+.pr1 .pk.nm { flex: 1.3; min-width: 0; font-weight: 700; }
+.pr1 .pk.nm small { display: block; font-size: 11px; font-weight: normal; color: #666; }
+.pr1 .pk.ks { flex: 1; min-width: 0; font-size: 15px; }
+.pr1 .x { background: none; border: none; font-size: 20px; color: #999; padding: 0 2px; }
+.pr2 { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.pr2 input[type=time] { flex: 1; min-width: 0; padding: 6px 4px; }
+.pr2 .til { color: #666; }
+.pr2 .zl { font-size: 13px; color: #555; margin-left: 4px; }
+.pr2 input[data-f="残"] { width: 52px; flex: none; padding: 6px 4px; text-align: center; }
+.pnote { margin-top: 6px; font-size: 15px; }
+
+/* 機械の表：区分｜分類｜機械名｜能力｜台｜＋｜− */
+.kh { padding: 6px 12px; border: 1px solid #b8a000; border-radius: 6px; background: #fff200; font-weight: 700; font-size: 14px; }
+.pln { padding: 0 12px; }
+.mt { padding: 4px 8px; }
+.mr { display: grid; grid-template-columns: 54px 56px minmax(0, 1fr) 62px 30px 28px 28px; gap: 3px; align-items: center; margin-bottom: 4px; }
+.mr.mh span { font-size: 11px; color: #666; padding-left: 2px; }
+.mc { height: 42px; border: 2px solid #8bc34a; border-radius: 4px; background: #fff; font-size: 13px; padding: 0 3px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #222; }
+.mc.ph { color: #bbb; }
+.mc.ls { color: #1565c0; }
+.mc.ct { font-size: 11px; line-height: 1.1; white-space: normal; text-align: center; }
+.mc.ct .ci { display: block; font-size: 16px; }
+.mc.qt { text-align: center; padding: 0; }
+.pm { height: 34px; border: 1px solid #999; border-radius: 4px; background: #fff; font-size: 17px; padding: 0; }
+.cats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 6px 0; }
+.cats button { border: 1px solid #bbb; border-radius: 8px; background: #fff; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; font-size: 12px; }
+.cats button .ci { font-size: 26px; line-height: 1.2; }
+.cats button small { font-size: 10px; color: #888; }
+.cats button.on { background: #fff4ea; border-color: var(--or); border-width: 2px; font-weight: 700; }
+.cats button.zero { opacity: .4; }
+.cmenu { background: #fffbe6; border: 1px solid #f0d000; border-radius: 8px; padding: 8px; margin: 6px 0; }
+.cmb { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chips.nosel button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ce { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+.ce span { flex: 1; min-width: 0; }
+.ce small { color: #777; }

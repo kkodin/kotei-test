@@ -15,9 +15,14 @@ const nk = s => HX.nameKey(s);
 const DEMO = HX.demo;
 const SELF = "ハシックス";   // 自社の会社名（詳細日報と同じ）
 const LKEY = "spn_proto_v1";
-const WX = ["晴", "曇", "雨", "雪", "晴/曇", "曇/晴", "曇/雨", "雨/曇", "晴/雨"];
+const WX5 = [["晴", "晴"], ["曇", "曇り"], ["雨", "雨"], ["風", "風"], ["雪", "雪"]];   // 2026-11-19 ユーザー：天候は 晴・曇り・雨・風・雪 だけ、いくつでも印
+const wxSet = v => String(v || "").split(/[\/・、,\s]+/).filter(Boolean);
 const WD = "日月火水木金土";
-const TEIJI = { 昼: ["8:00", "17:00"], 夜: ["21:00", "6:00"] };   // 定時（現場ごとの定時は詳細日報の現場の設定。試作は決め打ち）
+const TEIJI = { 昼: ["9:00", "17:00"], 夜: ["21:00", "5:00"] };   // 昼夜を押したときの作業時間（2026-11-19 ユーザー：昼 9:00〜17:00・夜 21:00〜5:00。基本タブで変えられる）
+// その日の作業時間（基本タブの 始業〜終業）。作業員・外注を足すときの始めの値と、残の基準。日報と昼夜が違う人は TEIJI
+const dayTime = sh => { const r = S.rec, k = sh === "夜" ? "夜" : "昼"; return r && r.勤務 === k && r.始業 && r.終業 ? [r.始業, r.終業] : TEIJI[k]; };
+// 2026-11-19 ユーザー：昼夜は基本タブで決めたので、作業員・外注には昼夜を出さない → 人の昼夜は日報の昼夜にそろえる。前と同じ時刻の人は新しい時間に
+const setShift = (r, sh) => { const o = [r.始業, r.終業]; r.勤務 = sh; [r.始業, r.終業] = TEIJI[sh]; (r.作業員 || []).concat(r.外注 || []).forEach(w => { w.昼夜 = sh; if (w.始業 === o[0] && w.終業 === o[1]) { w.始業 = r.始業; w.終業 = r.終業; } }); };
 const COLORS = { 青: "#1e88e5", 赤: "#e53935", 緑: "#43a047", 橙: "#fb8c00", 紫: "#8e24aa", 黄: "#fdd835", 茶: "#6d4c41", 灰: "#757575", 水: "#00acc1", 桃: "#ec407a" };
 
 const pad = n => String(n).padStart(2, "0");
@@ -34,7 +39,7 @@ const normTime = v => { const m = /^0?(\d{1,2}):(\d{2})/.exec(han(v)); return m 
 const t2input = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? pad(+m[1]) + ":" + m[2] : ""; };
 // 残（時間）：定時より早く始めた分＋遅く終わった分。夜をまたぐ終業は＋24時間（詳細日報の otParts と同じ考え）
 function zan(st, en, sh) {
-  const [ts, te] = TEIJI[sh === "夜" ? "夜" : "昼"];
+  const [ts, te] = dayTime(sh);
   const a = toMin(st), b0 = toMin(en), A = toMin(ts), B0 = toMin(te);
   if (a == null || b0 == null) return "";
   const b = b0 < a ? b0 + 1440 : b0, B = B0 <= A ? B0 + 1440 : B0;
@@ -53,7 +58,7 @@ const S = {
   me: ""
 };
 function blank() {
-  return { id: uid(), 日付: today(), 勤務: "昼", 元請: "", 現場: "", 記入者: S.me, 区分: "請負", 天気: "", 気温: "",
+  return { id: uid(), 日付: today(), 勤務: "昼", 始業: TEIJI.昼[0], 終業: TEIJI.昼[1], 元請: "", 現場: "", 記入者: S.me, 区分: "請負", 天気: "", 気温: "",
     作業: [{ 予定: "", 報告: "" }], 作業員: [], 機械: [], 材料: [], 外注: [], 車: [], 更新: "" };
 }
 const recs = () => { try { return (JSON.parse(localStorage.getItem(LKEY)) || {}).recs || []; } catch (e) { return []; } };
@@ -175,10 +180,10 @@ function siteKotei(r) {
 function usedWorks() { const set = new Set(); recs().forEach(r => (r.作業 || []).forEach(w => ["予定", "報告"].forEach(c => String(w[c] || "").split(/\n/).forEach(t => { t = t.trim(); if (t) set.add(t); })))); return [...set]; }
 
 function addWorkers(names, 工種, sh) {
-  let n = 0;
+  let n = 0; sh = S.rec.勤務;
   for (const nm of names) {
     if (S.rec.作業員.some(w => nk(w.名前) === nk(nm) && w.昼夜 === sh) || S.rec.外注.some(w => nk(w.名前) === nk(nm) && w.昼夜 === sh)) continue;
-    S.rec.作業員.push({ 会社: SELF, 名前: nm, 昼夜: sh, 始業: TEIJI[sh][0], 終業: TEIJI[sh][1], 工種: 工種 || "", 残: "" }); n++;
+    S.rec.作業員.push({ 会社: SELF, 名前: nm, 昼夜: sh, 始業: dayTime(sh)[0], 終業: dayTime(sh)[1], 工種: 工種 || "", 残: "" }); n++;
   }
   return n;
 }
@@ -191,11 +196,12 @@ function applyPlan(i, part) {
       const e = r.作業.find(w => !w[col]); if (e) e[col] = x.作業; else r.作業.push({ 予定: col === "予定" ? x.作業 : "", 報告: col === "報告" ? x.作業 : "" });
       msg.push("作業" + (col === "予定" ? "予定" : "完了報告") + "に「" + x.作業 + "」");
     }
-    if (part === "all" && r.勤務 !== sh && !r.作業員.length) r.勤務 = sh;
+    if (part === "all" && r.勤務 !== sh && !r.作業員.length) setShift(r, sh);
   }
   if (part === "all" || part === "hito") {
     const known = x.社員.filter(n => own().some(o => nk(o.名前) === nk(n)));
     const n = addWorkers(known, x.作業, sh); if (n) msg.push("作業員 " + n + "人");
+    const ew = known.filter(n => elsewhere(n).length); if (ew.length) msg.push("⚠ ほかの現場にも入っている人：" + ew.map(n => n + "（" + elsewhere(n).join("・") + "）").join("・"));
     if (known.length < x.社員.length) msg.push("名簿に無い社員は入れていません：" + x.社員.filter(n => !known.includes(n)).join("・"));
   }
   touch(); render();
@@ -206,7 +212,7 @@ function applyPlan(i, part) {
 /* ================= 下から出る窓（選ぶ） ================= */
 let SH = null;
 function openSheet(title, html, onOk, okLabel) {
-  SH = { onOk }; $("sBody").onclick = null; $("sClose").onclick = closeSheet;
+  SH = { onOk }; const sb0 = $("sBody"); sb0.onclick = sb0.oncontextmenu = sb0.ontouchstart = sb0.ontouchend = sb0.ontouchmove = null; $("sClose").onclick = closeSheet;
   $("sTitle").textContent = title; $("sBody").innerHTML = html;
   $("sOk").hidden = !onOk; $("sOk").textContent = okLabel || "決める";
   $("sheet").hidden = false; document.body.classList.add("lock");
@@ -236,7 +242,7 @@ function pick(o) {
       (o.clear && !o.multi && o.value ? `<div class="free"><button type="button" class="sub" data-clear="1">空にする</button></div>` : "") +
       (o.free ? `<div class="free"><button type="button" class="sub" data-free="1">候補に無いものを書く</button><div id="freeBox" hidden><input type="text" id="freeIn" ${o.freeMode ? `inputmode="${o.freeMode}"` : ""}><button type="button" class="pri small" data-freeok="1" style="margin-top:6px">これにする</button></div></div>` : "");
   };
-  openSheet(o.title, "", o.multi ? () => { o.done([...sel]); } : null, o.multi ? "入れる" : "");
+  openSheet(o.title, "", o.multi ? () => o.done([...sel]) : null, o.multi ? "入れる" : "");
   draw();
   $("sBody").onclick = e => {
     const k = e.target.closest("[data-kana]"); if (k) { kana = k.dataset.kana; draw(); return; }
@@ -317,32 +323,200 @@ const SPD = window.SPN_DATA || { リース機械: [], 材料: [] };
 const capN = s => String(s || "").replace(/m3/gi, "㎥").replace(/kva/gi, "kVA").replace(/ｔ/g, "t").trim();   // 能力の書き方をそろえる（0.25m3 と 0.25㎥ を同じに）
 const baseName = s => String(s || "").replace(/\s*[0-9０-９]+$/, "").trim() || String(s || "");
 function machineItems() {
-  const out = [], key = it => [it.区分, nk(it.会社), nk(it.名前), nk(it.種類), nk(it.能力)].join("|"), seen = new Set();
-  const add = it => { const k = key(it); if (seen.has(k)) return; seen.add(k); out.push(it); };
+  const c = cand(), out = [], seen = new Set(), cn = v => c.会社名[v] || v;
+  const add = it => { it.cat = it.cat || catOf(it); const k = mkey(it); if (seen.has(k) || c.機械消す.includes(k) || (it.区分 === "リース" && c.会社消す.includes(it.会社))) return; seen.add(k); out.push(it); };
   S.M.機械.forEach(x => add({ 区分: "自社", 会社: "", 名前: baseName(x.名前), 種類: "", 分類: x.分類 || "", 能力: capN(x.規格), tag: "自社" }));
-  SPD.リース機械.forEach(x => add({ 区分: "リース", 会社: x.会社, 名前: x.名前, 種類: x.種類, 分類: x.分類, 能力: capN(x.能力), 備考: x.備考, tag: x.会社, tagL: true }));
-  recs().forEach(r => (r.機械 || []).forEach(m => m.使用機材 && add({ 区分: m.区分 || (m.所有者 === SELF ? "自社" : m.所有者 ? "リース" : ""), 会社: m.区分 === "リース" ? m.会社 || m.所有者 || "" : "", 名前: m.使用機材, 種類: m.種類 || "", 分類: m.分類 || "", 能力: capN(m.規格), tag: "前に使った" })));
+  SPD.リース機械.forEach(x => add({ 区分: "リース", 会社: cn(x.会社), 名前: x.名前, 種類: x.種類, 分類: x.分類, 能力: capN(x.能力), 備考: x.備考, tag: cn(x.会社), tagL: true }));
+  c.機械足す.forEach(x => add(Object.assign({ 種類: "", 分類: "" }, x, { 会社: x.区分 === "リース" ? cn(x.会社) : "" })));
+  recs().forEach(r => (r.機械 || []).forEach(m => m.使用機材 && add({ 区分: m.区分 || (m.所有者 === SELF ? "自社" : m.所有者 ? "リース" : ""), 会社: m.区分 === "リース" ? m.会社 || m.所有者 || "" : "", 名前: m.使用機材, 種類: m.種類 || "", 分類: m.分類 || "", cat: m.種別 || "", 能力: capN(m.規格), tag: "前に使った" })));
   return out;
 }
-const leaseCos = () => { const a = [...LEASE]; SPD.リース機械.forEach(x => a.includes(x.会社) || a.push(x.会社)); usedVals("機械", "会社").forEach(v => v && v !== SELF && !a.includes(v) && a.push(v)); return a; };
-function pickMachine(i, isNew) {
-  const r = S.rec, m = r.機械[i];
-  facetSheet({ title: "使用機材", what: "機械", items: machineItems(), need: ["名前"],
-    note: "機械名・種類・能力、自社・リース、リース会社は、どれから押しても絞り込めます。",
-    sel: { 区分: m.区分 || "", 会社: m.会社 || "", 名前: m.使用機材 || "", 種類: m.種類 || "", 能力: m.規格 || "" },
-    facets: [{ k: "区分", label: "自社・リース", fixed: ["自社", "リース"] },
-      { k: "会社", label: "リース会社", show: s => s.区分 === "リース", extra: leaseCos, soft: true, free: true },
-      { k: "名前", label: "機械名", free: true, byCount: true }, { k: "種類", label: "種類", byCount: true }, { k: "能力", label: "能力", free: true }],
-    onSel: (s, k) => { if (k === "区分" && s.区分 !== "リース") s.会社 = ""; if (k === "会社" && s.会社) s.区分 = "リース"; },
-    itemLabel: it => `<b>${esc(it.名前)}</b> ${esc(it.種類)} ${esc(it.能力)}<small>　${[it.分類, it.備考].filter(Boolean).map(esc).join("・")}</small>`,
-    qty: { label: "台数", v: m.数量 || 1 },
-    done: (s, q) => {
-      const hit = machineItems().find(x => x.区分 === s.区分 && nk(x.会社) === nk(s.区分 === "リース" ? s.会社 : "") && nk(x.名前) === nk(s.名前) && nk(x.種類) === nk(s.種類) && nk(x.能力) === nk(s.能力));
-      Object.assign(m, { 区分: s.区分, 会社: s.区分 === "リース" ? s.会社 : "", 使用機材: s.名前, 種類: s.種類, 規格: s.能力, 分類: (hit && hit.分類) || "", 数量: String(q) });
-      m.所有者 = s.区分 === "自社" ? SELF : s.区分 === "リース" ? s.会社 || "リース" : m.所有者 || "";
-      touch(); render();
-    } });
-  if (isNew) $("sClose").onclick = () => { if (!r.機械[i].使用機材) { r.機械.splice(i, 1); render(); } closeSheet(); $("sClose").onclick = closeSheet; };
+const leaseCos = () => { const c = cand(), a = [], push = v => { v = c.会社名[v] || v; if (v && v !== SELF && !c.会社消す.includes(v) && !a.includes(v)) a.push(v); }; LEASE.forEach(push); SPD.リース機械.forEach(x => push(x.会社)); c.会社足す.forEach(push); usedVals("機械", "会社").forEach(push); return a; };
+/* ---- 機械の表（2026-11-19 ユーザー：区分｜分類｜機械名｜能力｜＋｜− の表。分類は 重機・車両・ハツリ… を絵から選ぶ） ---- */
+const CATS = [["重機", "🚜"], ["車両", "🚚"], ["ハツリ", "⛏️"], ["安全", "🦺"], ["測量機", "📐"], ["転圧", "🔨"], ["発電機", "⚡"], ["小型機械", "🔧"], ["水ポン", "💧"], ["他", "📦"]];
+// もとの分類（稼働データ・見積）と名前から、上の10の分類に分ける
+function catOf(it) {
+  const b = String(it.分類 || ""), n = String(it.名前 || "");
+  if (b !== "車両" && (/重機|バックホウ/.test(b + n) || /クレーン|バケット|エクステンションアーム|ユンボ/.test(n))) return "重機";
+  if (b === "車両" || /ダンプ|ユニック|トラック|散水車|平ボディ/.test(n)) return "車両";
+  if (/はつり|ハツリ/.test(b) || /ブレーカ|ピック|チッパ|コンプレッサ|エアホース|削岩/.test(n)) return "ハツリ";
+  if (/保安|安全|照明/.test(b) || /表示板|セルフロック|バルーン|コーン|バリケード/.test(n)) return "安全";
+  if (/測量|測定/.test(b) || /レベル|トータルステーション|光波|三脚|レーザー|検知器/.test(n)) return "測量機";
+  if (b === "転圧" || /ランマ|プレート|ローラ/.test(n)) return "転圧";
+  if (/発電/.test(b) || /発電|ウェルダ/.test(n)) return "発電機";
+  if (b === "水" || /ポンプ|ウォッシャ|洗浄|貯水|バキューム|スイーパー/.test(n)) return "水ポン";
+  if (b === "小型機械" || /カッター|バイブレ|草刈|送風|ダクト|ブレード/.test(n)) return "小型機械";
+  return "他";
+}
+const capL = it => [it.種類, it.能力].filter(Boolean).join(" ");
+const mkey = it => [it.区分, nk(it.会社), nk(it.名前), nk(capL(it))].join("|");
+const blankM = () => ({ 区分: "", 会社: "", 種別: "", 使用機材: "", 種類: "", 規格: "", 分類: "", 所有者: "", 数量: "1" });
+const MF = { 区分: it => it.区分, 会社: it => it.会社, 種別: it => it.cat, 名前: it => it.名前, 能力: capL };
+const rowVals = m => ({ 区分: m.区分 || "", 会社: m.区分 === "リース" ? m.会社 || "" : "", 種別: m.種別 || "", 名前: m.使用機材 || "", 能力: [m.種類, m.規格].filter(Boolean).join(" ") });
+// 押してあるマスで候補を絞る（そのマスの候補が無くなる絞りは使わない＝カナモトのように一覧の無い会社でも選べる）
+function narrow(items, sel, skip) {
+  let a = items;
+  for (const k of ["区分", "会社", "種別", "名前", "能力"]) {
+    if (k === skip || (skip === "区分" && k === "会社") || !sel[k]) continue;
+    const b = a.filter(it => nk(MF[k](it)) === nk(sel[k])); if (b.length) a = b;
+  }
+  return a;
+}
+// 1つに決まるマスは埋める（例：自社の発電機は1台だけ → 機械名・能力が入る）
+function autofill(m) {
+  const sel = rowVals(m), strict = machineItems().filter(it => Object.entries(sel).every(([k, v]) => !v || nk(MF[k](it)) === nk(v)));
+  if (strict.length) {
+    const one = f => { const s = new Set(strict.map(x => nk(f(x)))); return s.size === 1 ? f(strict[0]) : ""; };
+    if (!m.種別) m.種別 = one(MF.種別);
+    if (!m.使用機材 && (m.区分 || m.種別)) m.使用機材 = one(MF.名前);
+    if (!m.規格 && !m.種類 && m.使用機材 && one(capL)) { m.種類 = strict[0].種類 || ""; m.規格 = strict[0].能力 || ""; }
+    if (!m.区分 && m.使用機材 && one(MF.区分) && (one(MF.区分) === "自社" || one(MF.会社))) { m.区分 = one(MF.区分); m.会社 = m.区分 === "リース" ? one(MF.会社) : ""; }
+    m.分類 = one(it => it.分類) || m.分類 || "";
+  }
+  m.所有者 = m.区分 === "自社" ? SELF : m.区分 === "リース" ? m.会社 || "リース" : m.所有者 || "";
+}
+// その日その現場に予定している機械：自社＝自社機械稼働表の予約、リース＝この現場の前の日報（14日以内）に入れたリースの機械
+function usesDay(y, k) {
+  if ((y.出勤 || []).includes(k)) return true;
+  if ((y.休み || []).includes(k) || (y.未使用 || []).includes(k)) return false;
+  const d = dateOf(k).getDay(); return d === 0 ? !!y.日祝 : d === 6 ? !!y.土 : true;
+}
+function plannedMachines(r) {
+  if (!r.現場) return [];
+  const out = [], seen = new Set(), add = p => { const k = mkey(p); if (seen.has(k)) return; seen.add(k); out.push(p); };
+  (S.yoyaku || []).forEach(y => {
+    if (!sameSite(y.現場, r.現場) || !(y.開始 <= r.日付 && r.日付 <= y.終了) || (y.区分 || "昼") !== r.勤務 || !usesDay(y, r.日付)) return;
+    const mc = S.kmap && S.kmap[y.機械]; if (!mc) return;
+    add({ 区分: "自社", 会社: "", 名前: baseName(mc.名前), 種類: "", 能力: capN(mc.規格), 分類: mc.分類 || "", cat: catOf(mc), from: "稼働表" });
+  });
+  const prev = recs().filter(x => x.id !== r.id && sameSite(x.現場, r.現場) && x.日付 < r.日付 && x.日付 >= addDays(r.日付, -14)).sort((a, b) => b.日付.localeCompare(a.日付))[0];
+  if (prev) (prev.機械 || []).forEach(m => m.区分 === "リース" && m.使用機材 && add({ 区分: "リース", 会社: m.会社 || "", 名前: m.使用機材, 種類: m.種類 || "", 能力: m.規格 || "", 分類: m.分類 || "", cat: m.種別 || catOf({ 名前: m.使用機材, 分類: m.分類 }), 数量: m.数量, from: jpd(prev.日付) + "の日報" }));
+  return out;
+}
+const hasPlanned = (r, p) => r.機械.some(m => m.区分 === p.区分 && nk(m.会社) === nk(p.会社) && nk(m.使用機材) === nk(p.名前) && nk(m.規格) === nk(p.能力));
+const setKubun = (m, k, co) => { m.区分 = k; m.会社 = co || ""; autofill(m); m.所有者 = k === "自社" ? SELF : co || "リース"; touch(); render(); };
+// 区分：自社／リース会社。会社名は右クリック（スマホは長押し）で 直す・消す・足す（2026-11-19 ユーザー）
+function kubunSheet(i) {
+  const r = S.rec; let menu = null, edit = null, lp = null, lpFired = false;
+  const draw = () => {
+    const m = r.機械[i], sel = rowVals(m), base = narrow(machineItems(), sel, "区分"), cnt = f => base.filter(f).length;
+    $("sBody").innerHTML =
+      (menu ? `<div class="cmenu"><b>${esc(menu)}</b><div class="cmb"><button type="button" class="sub small" data-cm="ren">名前を直す</button><button type="button" class="sub small" data-cm="del">消す</button><button type="button" class="sub small" data-cm="add">会社を足す</button><button type="button" class="sub small" data-cm="x">やめる</button></div></div>` : "") +
+      (edit ? `<div class="cmenu"><b>${edit.mode === "ren" ? esc(edit.co) + " の名前を直す" : "リース会社を足す"}</b><div class="row2"><input type="text" id="coIn" value="${edit.mode === "ren" ? esc(edit.co) : ""}"><button type="button" class="pri small" data-cook="1" style="flex:none">これにする</button></div></div>` : "") +
+      `<div class="hint">自社か、リースの会社を押す。会社名を右クリック（スマホは長押し）で 直す・消す・足す。</div>` +
+      `<div class="chips"><button type="button" data-k="自社" class="${sel.区分 === "自社" ? "on" : ""}">自社<small> ${cnt(x => x.区分 === "自社")}</small></button><button type="button" data-k="リース" class="${sel.区分 === "リース" && !sel.会社 ? "on" : ""}">リース（会社はあとで）</button></div>` +
+      `<div class="grp">リース会社</div><div class="chips nosel">${leaseCos().map(c => { const n = cnt(x => x.区分 === "リース" && nk(x.会社) === nk(c)); return `<button type="button" data-co="${esc(c)}" class="${sel.会社 === c ? "on" : ""}">${esc(c)}${n ? `<small> ${n}</small>` : ""}</button>`; }).join("")}</div>` +
+      `<div class="free"><button type="button" class="sub" data-cm="add">＋ リース会社を足す</button> <button type="button" class="kh" data-cand="1">候補編集</button></div>`;
+  };
+  openSheet("区分（自社・リース会社）", ""); draw();
+  const sb = $("sBody"), menuOn = co => { menu = co; edit = null; draw(); sb.scrollTop = 0; };
+  sb.oncontextmenu = e => { const b = e.target.closest("[data-co]"); if (!b) return; e.preventDefault(); menuOn(b.dataset.co); };
+  sb.ontouchstart = e => { const b = e.target.closest("[data-co]"); if (!b) return; lpFired = false; clearTimeout(lp); lp = setTimeout(() => { lpFired = true; menuOn(b.dataset.co); }, 550); };
+  sb.ontouchend = sb.ontouchmove = () => clearTimeout(lp);
+  sb.onclick = e => {
+    if (lpFired) { lpFired = false; return; }
+    const t = e.target; let b;
+    if ((b = t.closest("[data-cm]"))) {
+      const c = b.dataset.cm;
+      if (c === "del") { if (confirm(`${menu} を候補から消しますか？（このブラウザの候補だけ）`)) delCo(menu); menu = null; }
+      else if (c === "x") menu = null;
+      else { edit = { mode: c, co: menu }; menu = null; draw(); $("coIn").focus(); return; }   // ここで初めてキーボード
+      draw(); return;
+    }
+    if (t.closest("[data-cook]")) { const v = $("coIn").value.trim(); if (!v) return; if (edit.mode === "ren") renCo(edit.co, v); else addCo(v); edit = null; draw(); render(); return; }
+    if (t.closest("[data-cand]")) return candEdit();
+    if ((b = t.closest("[data-k]"))) { closeSheet(); return setKubun(r.機械[i], b.dataset.k, ""); }
+    if ((b = t.closest("[data-co]"))) { closeSheet(); return setKubun(r.機械[i], "リース", b.dataset.co); }
+  };
+}
+const catGrid = (cur, cnt, attr) => `<div class="cats">${CATS.map(([c, ic]) => { const n = cnt ? cnt(c) : 1; return `<button type="button" ${attr}="${c}" class="${cur === c ? "on" : ""} ${n ? "" : "zero"}"><span class="ci">${ic}</span><span>${c}</span>${cnt && n ? `<small>${n}</small>` : ""}</button>`; }).join("")}</div>`;
+function catSheet(i) {
+  const m = S.rec.機械[i], base = narrow(machineItems(), rowVals(m), "種別");
+  openSheet("分類", `<div class="hint">絵を押して選ぶ（数は候補の数）。</div>` + catGrid(m.種別, c => base.filter(x => x.cat === c).length, "data-c") + (m.種別 ? `<div class="free"><button type="button" class="sub" data-clear="1">空にする</button></div>` : ""));
+  $("sBody").onclick = e => {
+    const b = e.target.closest("[data-c]");
+    if (b) { m.種別 = b.dataset.c; autofill(m); touch(); closeSheet(); render(); return; }
+    if (e.target.closest("[data-clear]")) { m.種別 = ""; touch(); closeSheet(); render(); }
+  };
+}
+function nameSheet(i) {
+  const r = S.rec, m = r.機械[i], base = narrow(machineItems(), rowVals(m), "名前"), cnt = new Map();
+  base.forEach(x => cnt.set(x.名前, (cnt.get(x.名前) || 0) + 1));
+  const pl = [...new Set(plannedMachines(r).filter(p => (!m.区分 || p.区分 === m.区分) && (!m.種別 || p.cat === m.種別)).map(p => p.名前))];
+  const names = [...cnt.keys()].filter(v => !pl.includes(v)).sort((a, b) => cnt.get(b) - cnt.get(a) || a.localeCompare(b, "ja"));
+  const what = [m.区分 === "リース" ? m.会社 || "リース" : m.区分, m.種別].filter(Boolean).join("・");
+  pick({ title: "機械名", groups: [{ name: "この現場に今日予定している機械", items: pl.map(v => ({ v })) }, { name: what ? what + " の機械" : "機械", items: names.map(v => ({ v })) }],
+    value: m.使用機材, clear: true, free: true, done: v => { m.使用機材 = v; if (!v) { m.種類 = ""; m.規格 = ""; } autofill(m); touch(); render(); } });
+}
+function capSheet(i) {
+  const m = S.rec.機械[i], base = narrow(machineItems(), rowVals(m), "能力");
+  const vals = [...new Set(base.map(capL).filter(Boolean))].sort(numCmp);
+  pick({ title: "能力" + (m.使用機材 ? "（" + m.使用機材 + "）" : ""), groups: [{ items: vals.map(v => ({ v })) }], value: [m.種類, m.規格].filter(Boolean).join(" "), clear: true, free: true,
+    empty: "候補がありません。「候補に無いものを書く」で入れてください",
+    done: v => { const it = base.find(x => capL(x) === v); if (it) { m.種類 = it.種類 || ""; m.規格 = it.能力 || ""; } else { m.種類 = ""; m.規格 = v; } autofill(m); touch(); render(); } });
+}
+/* ---- 候補編集（2026-11-19 ユーザー：別の窓でリース会社名・機械名などを直せる）。このブラウザの中だけ（試作） ---- */
+const CKEY = "spn_cand_v1";
+const cand = () => { const d = { 会社足す: [], 会社消す: [], 会社名: {}, 機械足す: [], 機械消す: [] }; try { return Object.assign(d, JSON.parse(localStorage.getItem(CKEY)) || {}); } catch (e) { return d; } };
+const putCand = c => { try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) { toast("このブラウザに保存できません：" + e.message); } };
+function renCo(cur, nw) {
+  const c = cand(); let hit = false;
+  for (const k in c.会社名) if (c.会社名[k] === cur) { c.会社名[k] = nw; hit = true; }
+  const j = c.会社足す.indexOf(cur); if (j >= 0) { c.会社足す[j] = nw; hit = true; }
+  if (!hit) c.会社名[cur] = nw;
+  c.機械足す.forEach(x => { if (x.会社 === cur) x.会社 = nw; });
+  putCand(c); S.rec.機械.forEach(m => { if (m.会社 === cur) { m.会社 = nw; m.所有者 = nw; } }); touch();
+}
+function delCo(co) { const c = cand(), j = c.会社足す.indexOf(co); if (j >= 0) c.会社足す.splice(j, 1); else if (!c.会社消す.includes(co)) c.会社消す.push(co); putCand(c); }
+function addCo(nw) { const c = cand(), j = c.会社消す.indexOf(nw); if (j >= 0) c.会社消す.splice(j, 1); else if (!leaseCos().includes(nw)) c.会社足す.push(nw); putCand(c); }
+function candEdit() {
+  let owner = "自社", form = null, coEdit = null;
+  const keep = () => { if (form && $("fmN")) { form.n = $("fmN").value; form.c = $("fmC").value; } if (coEdit && $("ceIn")) coEdit.v = $("ceIn").value; };
+  const draw = () => {
+    const cos = leaseCos(); if (owner !== "自社" && !cos.includes(owner)) owner = "自社";
+    const items = machineItems().filter(x => x.tag !== "前に使った" && (owner === "自社" ? x.区分 === "自社" : x.区分 === "リース" && nk(x.会社) === nk(owner)));
+    const byCat = CATS.map(([c, ic]) => [c, ic, items.filter(x => x.cat === c)]).filter(x => x[2].length);
+    $("sBody").innerHTML = `<div class="hint">直した候補は、このブラウザの中だけに入ります（試作）。</div>` +
+      `<div class="fz"><div class="fzh">リース会社</div>${cos.map(c => `<div class="ce"><span>${esc(c)}</span><button type="button" class="sub small" data-ren="${esc(c)}">直す</button><button type="button" class="sub small" data-delco="${esc(c)}">消す</button></div>`).join("")}` +
+      (coEdit ? `<div class="row2" style="margin-top:6px"><input type="text" id="ceIn" value="${esc(coEdit.v || "")}"><button type="button" class="pri small" data-ceok="1" style="flex:none">${coEdit.co ? "直す" : "足す"}</button></div>` : `<button type="button" class="sub" data-addco="1" style="margin-top:6px">＋ 会社を足す</button>`) + `</div>` +
+      `<div class="fz"><div class="fzh">機械（だれの機械か押す）</div><div class="chips">${["自社", ...cos].map(c => `<button type="button" data-ow="${esc(c)}" class="${owner === c ? "on" : ""}">${esc(c)}</button>`).join("")}</div>` +
+      (form ? `<div class="fz"><div class="fzh">${esc(owner)} に機械を足す</div>${catGrid(form.cat, null, "data-fc")}<label class="lb">機械名</label><input type="text" id="fmN" value="${esc(form.n || "")}"><label class="lb">能力</label><input type="text" id="fmC" value="${esc(form.c || "")}"><button type="button" class="pri" data-fmok="1" style="margin-top:8px">足す</button></div>`
+        : `<button type="button" class="sub" data-addm="1" style="margin:4px 0">＋ ${esc(owner)} に機械を足す</button>`) +
+      (byCat.map(([c, ic, a]) => `<div class="grp">${ic} ${esc(c)}</div>` + a.map(x => `<div class="ce"><span>${esc(x.名前)} <small>${esc(capL(x))}</small></span><button type="button" class="sub small" data-delm="${esc(mkey(x))}">消す</button></div>`).join("")).join("") || `<div class="empty">${esc(owner)} の機械の候補はありません</div>`) + `</div>` +
+      `<div class="free"><button type="button" class="sub small" data-reset="1">直した候補を全部もとに戻す</button></div>`;
+  };
+  openSheet("候補編集", ""); draw();
+  $("sClose").onclick = () => { closeSheet(); render(); };
+  $("sBody").onclick = e => {
+    const t = e.target; let b; keep();
+    if ((b = t.closest("[data-ren]"))) { coEdit = { co: b.dataset.ren, v: b.dataset.ren }; draw(); $("ceIn").focus(); return; }
+    if (t.closest("[data-addco]")) { coEdit = { co: "", v: "" }; draw(); $("ceIn").focus(); return; }
+    if (t.closest("[data-ceok]")) { const v = $("ceIn").value.trim(); if (!v) return; if (coEdit.co) { renCo(coEdit.co, v); if (owner === coEdit.co) owner = v; } else addCo(v); coEdit = null; draw(); return; }
+    if ((b = t.closest("[data-delco]"))) { if (confirm(`${b.dataset.delco} を候補から消しますか？`)) { delCo(b.dataset.delco); draw(); } return; }
+    if ((b = t.closest("[data-ow]"))) { owner = b.dataset.ow; form = null; draw(); return; }
+    if ((b = t.closest("[data-delm]"))) { const c = cand(), k = b.dataset.delm, j = c.機械足す.findIndex(x => mkey(Object.assign({ 種類: "" }, x)) === k); if (j >= 0) c.機械足す.splice(j, 1); else c.機械消す.push(k); putCand(c); draw(); return; }
+    if (t.closest("[data-addm]")) { form = { cat: "", n: "", c: "" }; draw(); $("fmN").focus(); return; }
+    if ((b = t.closest("[data-fc]"))) { form.cat = b.dataset.fc; draw(); return; }
+    if (t.closest("[data-fmok]")) { const n = form.n.trim(); if (!n) { toast("機械名を書いてください"); return; } if (!form.cat) { toast("分類（絵）を押してください"); return; }
+      const c = cand(); c.機械足す.push({ 区分: owner === "自社" ? "自社" : "リース", 会社: owner === "自社" ? "" : owner, 名前: n, 能力: capN(form.c), cat: form.cat }); putCand(c); form = null; draw(); toast(n + " を足しました"); return; }
+    if (t.closest("[data-reset]")) { if (confirm("直した候補（会社・機械）を全部もとに戻しますか？")) { try { localStorage.removeItem(CKEY); } catch (e) { } draw(); } return; }
+  };
+}
+/* ---- 縦に送って選ぶ窓（2026-11-19 ユーザー：気温は数なので縦にスワイプ。台数も） ---- */
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, j) => String(a + j));
+const TEMP = [6, 7, 10, 15, 19, 22, 26, 27, 24, 19, 14, 9];   // 月のだいたいの気温（始めの位置）
+const WH = 44;
+function wheel(o) {
+  const vals = o.vals.map(String), idx = Math.max(0, vals.indexOf(String(o.cur)));
+  openSheet(o.title, `<div class="hint">上下に送って、まん中の数で「決める」。数を押してもそこへ動きます。</div><div class="wheel"><div class="wbar"></div><div class="wlist" id="wl"><div class="wpad"></div>${vals.map((v, j) => `<div class="wi" data-wi="${j}">${esc(v)}<small> ${esc(o.unit || "")}</small></div>`).join("")}<div class="wpad"></div></div></div>` +
+    (o.clear ? `<div class="free"><button type="button" class="sub" data-clear="1">空にする</button></div>` : ""), () => { o.done(vals[cur()]); });
+  const wl = $("wl"), cur = () => Math.max(0, Math.min(vals.length - 1, Math.round(wl.scrollTop / WH)));
+  const mark = () => { const c = cur(); wl.querySelectorAll(".wi").forEach((el, j) => el.classList.toggle("on", j === c)); };
+  wl.scrollTop = idx * WH; mark(); wl.onscroll = mark;
+  $("sBody").onclick = e => {
+    const it = e.target.closest("[data-wi]"); if (it) { wl.scrollTo({ top: +it.dataset.wi * WH, behavior: "smooth" }); return; }
+    if (e.target.closest("[data-clear]")) { o.done(""); closeSheet(); }
+  };
 }
 /* ---- 材料の候補：材料マスタ（分類・材料名・規格・単位）・前に使ったもの ---- */
 function materialItems() {
@@ -384,15 +558,20 @@ const inp = (l, i, f, v, extra) => `<input type="text" data-l="${l}" data-i="${i
 const num = (l, i, f, v, ph) => inp(l, i, f, v, `inputmode="decimal" placeholder="${esc(ph || "")}"`);
 const tim = (l, i, f, v) => `<input type="time" data-l="${l}" data-i="${i}" data-f="${f}" value="${t2input(v)}">`;
 
+// 基本タブ（2026-11-19 ユーザー：行の節約。見出しと入力欄を同じ行に・日付の下に作業時間・現場名の横に常用・元請は現場名の下）
+const fr = (t, req, body, cls) => `<div class="fr ${cls || ""}"><span class="fl">${t}${req ? '<span class="req">＊</span>' : ""}</span><div class="fc">${body}</div></div>`;
 function kihon(r) {
-  return fh("日付", true) + `<div class="fv"><div class="row2"><input type="date" data-l="" data-f="日付" value="${r.日付}"><div>${segH("勤務", ["昼", "夜"], r.勤務)}</div></div><div class="hint">昼夜は、作業員・外注を足すときの始めの値（人ごとに変えられます）。</div></div>` +
-    fh("元請業者") + `<div class="fv">${pkBtn(r.元請, "押して選ぶ", 'data-act="pickMoto"')}</div>` +
-    fh("現場名", true) + `<div class="fv">${pkBtn(r.現場, "押して選ぶ", 'data-act="pickSite"', !r.現場)}</div>` +
-    fh("区分", false, "常用の日だけ印を付ける。付けない日＝請負") + `<div class="fv"><button type="button" class="chk ${r.区分 === "常用" ? "on" : ""}" data-act="joyo" aria-pressed="${r.区分 === "常用"}">${r.区分 === "常用" ? "✅" : "☐"} 常用</button></div>` +
-    fh("天気") + `<div class="fv">${segH("天気", WX, r.天気)}</div>` +
-    fh("気温", false, "℃") + `<div class="fv" style="max-width:160px">${num("", "", "気温", r.気温, "例 12")}</div>` +
-    fh("記入者") + `<div class="fv">${pkBtn(r.記入者, "押して選ぶ", 'data-act="pickMe"')}</div>` +
-    `<div class="fv hint">保存はこのブラウザの中だけです（試作）。本物の日報には書きません。</div>`;
+  if (!r.始業 || !r.終業) [r.始業, r.終業] = TEIJI[r.勤務 === "夜" ? "夜" : "昼"];   // 前の版で保存した日報
+  return `<div class="frs">` +
+    fr("日付", true, `<input type="date" data-l="" data-f="日付" value="${r.日付}">${segH("勤務", ["昼", "夜"], r.勤務)}`) +
+    fr("作業時間", false, `${tim("", "", "始業", r.始業)}<span class="til">〜</span>${tim("", "", "終業", r.終業)}`, "tm") +
+    `<div class="fhint">昼夜を押すと 昼 ${TEIJI.昼.join("〜")}・夜 ${TEIJI.夜.join("〜")}。作業員・外注を足すときの始めの値。</div>` +
+    fr("現場名", true, `${pkBtn(r.現場, "押して選ぶ", 'data-act="pickSite"', !r.現場)}<button type="button" class="chk ${r.区分 === "常用" ? "on" : ""}" data-act="joyo" aria-pressed="${r.区分 === "常用"}" title="常用の日だけ印を付ける。付けない日＝請負">${r.区分 === "常用" ? "✅" : "☐"} 常用</button>`) +
+    fr("元請業者", false, pkBtn(r.元請, "押して選ぶ", 'data-act="pickMoto"')) +
+    fr("天気", false, WX5.map(([v, t]) => { const on = wxSet(r.天気).includes(v); return `<button type="button" class="chk wxb ${on ? "on" : ""}" data-act="wx" data-v="${v}">${on ? "☑" : "☐"}${t}</button>`; }).join(""), "wx") +
+    fr("気温", false, `<button type="button" class="pk kionb ${r.気温 === "" || r.気温 == null ? "ph" : ""}" data-act="kion">${r.気温 === "" || r.気温 == null ? "押して選ぶ" : esc(r.気温) + " ℃"}</button>`, "kion") +
+    fr("記入者", false, pkBtn(r.記入者, "押して選ぶ", 'data-act="pickMe"')) +
+    `</div><div class="fv hint">保存はこのブラウザの中だけです（試作）。本物の日報には書きません。</div>`;
 }
 function sagyo(r) {
   const col = S.mode === "報告" ? "報告" : "予定", other = col === "報告" ? "予定" : "報告";
@@ -405,20 +584,22 @@ function sagyo(r) {
 }
 function personCard(l, w, i) {
   const ng = rowErr(l, w, i), wn = ng ? "" : rowWarn(l, w);
-  const auto = zan(w.始業, w.終業, w.昼夜);
-  const noName = l === "外注" && !w.名前 && +w.人数 > 0;
-  return `<div class="card ${ng ? "ng" : wn ? "wn" : ""}"><div class="ch">${pkBtn(noName ? "名前未定" : w.名前, "名前を選ぶ", `data-act="pickName" data-l="${l}" data-i="${i}"`, !w.名前 && !noName)}<button type="button" class="x" data-act="del" data-l="${l}" data-i="${i}" title="消す">✕</button></div>` +
-    `<div class="ch" style="margin-top:4px"><span class="co">${esc(w.会社 || "会社なし")}</span></div>` +
+  const noName = l === "外注" && !w.名前 && +w.人数 > 0, nm = noName ? "名前未定" : w.名前;
+  const kNg = S.rec.区分 === "常用" && !w.工種;
+  return `<div class="card pc ${ng ? "ng" : wn ? "wn" : ""}">` +
+    `<div class="pr1"><button type="button" class="pk nm ${nm ? "" : "ph"} ${!w.名前 && !noName ? "ng" : ""}" data-act="pickName" data-l="${l}" data-i="${i}">${esc(nm || "名前を選ぶ")}${l === "外注" ? `<small>${esc(w.会社 || "会社なし")}</small>` : ""}</button>` +
+    `<button type="button" class="pk ks ${w.工種 ? "" : "ph"} ${kNg ? "ng" : ""}" data-act="pickKoshu" data-l="${l}" data-i="${i}">${esc(w.工種 || (S.rec.区分 === "常用" ? "工種＊" : "工種"))}</button>` +
+    `<button type="button" class="x" data-act="del" data-l="${l}" data-i="${i}" title="消す">✕</button></div>` +
+    `<div class="pr2">${tim(l, i, "始業", w.始業)}<span class="til">〜</span>${tim(l, i, "終業", w.終業)}<span class="zl">残</span>${num(l, i, "残", w.残, "0")}</div>` +
     (noName ? `<div class="qrow"><label class="lb">人数</label>${stepH("qty", l, i, "人数", w.人数)}</div>` : "") +
-    `<label class="lb">昼夜</label>${segH("昼夜", ["昼", "夜"], w.昼夜, l, i)}` +
-    `<div class="grid3"><div><label class="lb">始業時間</label>${tim(l, i, "始業", w.始業)}</div><div><label class="lb">終業時間</label>${tim(l, i, "終業", w.終業)}</div><div><label class="lb">残（時間）</label>${num(l, i, "残", w.残, auto || "0")}</div></div>` +
-    `<label class="lb">工種</label>${pkBtn(w.工種, "押して選ぶ", `data-act="pickKoshu" data-l="${l}" data-i="${i}"`)}` +
+    `<input type="text" class="pnote" data-l="${l}" data-i="${i}" data-f="内容" value="${esc(w.内容 || "")}" placeholder="作業内容（この人だけ書くことがあれば）">` +
     (ng ? `<div class="msg">${esc(ng)}</div>` : "") + (wn ? `<div class="wmsg">${esc(wn)}</div>` : "") + `</div>`;
 }
 // 保存できない誤り
 function rowErr(l, w, i) {
   const r = S.rec;
   if (l === "外注" && !w.会社) return "会社を選んでください";
+  if (r.区分 === "常用" && !w.工種) return "常用の日は工種を選んでください";
   if (!w.名前) return l === "外注" && +w.人数 > 0 ? "" : "名前を選んでください";
   if (l === "外注") {
     const co = companyOfPerson(w.名前);
@@ -430,6 +611,8 @@ function rowErr(l, w, i) {
 }
 // 注意（保存はできる）。2026-11-19 ユーザー：名簿にいない外注の会社（例 オリノ）で先に進めなかった → 名前を書く・人数だけで進める
 function rowWarn(l, w) {
+  const ew = w.名前 ? elsewhere(w.名前) : [];
+  if (ew.length) return "ほかの現場にも入っています：" + ew.join("・");
   if (l !== "外注") return "";
   if (!w.名前) return `名前未定で ${w.人数 || 1}名 入れています。名簿に人を足したら名前を選んでください。`;
   if (companyOfPerson(w.名前) == null) return "名簿にいない人です（保存はできます。あとで名簿に足してください）。";
@@ -444,15 +627,17 @@ function hito(r) {
     `<button type="button" class="add" data-act="addHito">＋ 作業員を選ぶ</button>` + sum;
 }
 function kikai(r) {
-  // 2026-11-19 ユーザー：押すと 機械名・種類・能力／自社・リース／リース会社 をどれからでも選べる窓。台数を指定、ほかの機械は ＋
-  return fh("使用機材", false, "押すと絞り込みの窓。ほかの機械は ＋") +
-    (r.機械.length ? r.機械.map((m, i) => {
-      const own = m.区分 || (m.所有者 === SELF ? "自社" : m.所有者 ? "リース" : "");
-      const line = [own === "自社" ? `<span class="tg">自社</span>` : own === "リース" ? `<span class="tg l">リース${m.会社 || (m.所有者 && m.所有者 !== "リース") ? "：" + esc(m.会社 || m.所有者) : ""}</span>` : `<span class="tg">自社・リース未定</span>`, esc([m.種類, m.分類].filter(Boolean).join("・"))].filter(Boolean).join(" ");
-      return `<div class="card"><div class="ch">${pkBtn(m.使用機材 ? [m.使用機材, m.規格].filter(Boolean).join(" ") : "", "機械を選ぶ", `data-act="pickKiki" data-i="${i}"`, !m.使用機材)}<button type="button" class="x" data-act="del" data-l="機械" data-i="${i}">✕</button></div>` +
-        `<div class="mline">${line}</div><div class="qrow"><label class="lb">台数</label>${stepH("qty", "機械", i, "数量", m.数量)}</div></div>`;
-    }).join("") : `<div class="empty">まだありません。</div>`) +
-    `<button type="button" class="add" data-act="addKikai">＋ 機械を足す</button>`;
+  const pl = plannedMachines(r);
+  const cell = (i, k, v, ph, cls) => `<button type="button" class="mc ${v ? "" : "ph"} ${cls || ""}" data-act="mcell" data-i="${i}" data-k="${k}">${v || ph}</button>`;
+  const row = (m, i, isNew) => {
+    const kb = m.区分 === "自社" ? "自社" : m.区分 === "リース" ? (m.会社 || "リース") : "", ci = CATS.find(c => c[0] === m.種別);
+    return `<div class="mr">${cell(i, "区分", esc(kb), "区分", m.区分 === "リース" ? "ls" : "")}${cell(i, "種別", ci ? `<span class="ci">${ci[1]}</span>${esc(ci[0])}` : "", "分類", "ct")}${cell(i, "名前", esc(m.使用機材 || ""), "機械名")}${cell(i, "能力", esc([m.種類, m.規格].filter(Boolean).join(" ")), "能力")}${cell(i, "台", isNew ? "" : esc(m.数量 || "1"), "台", "qt")}` +
+      (isNew ? `<span></span><span></span>` : `<button type="button" class="pm" data-act="mplus" data-i="${i}" title="下に行を足す">＋</button><button type="button" class="pm" data-act="mminus" data-i="${i}" title="この行を消す">−</button>`) + `</div>`;
+  };
+  return fh("使用機材", false, "", `<button type="button" class="kh" data-act="candEdit">候補編集</button>`) +
+    (pl.length ? `<div class="pln"><div class="grp">${jpd(r.日付)} ${r.勤務}　この現場に予定している機械（押すと入る）</div><div class="chips">${pl.map((p, j) => `<button type="button" data-act="addPlanned" data-i="${j}" class="${hasPlanned(r, p) ? "used" : ""}">${esc(p.区分 === "自社" ? "自社" : p.会社 || "リース")}・${esc(p.名前)} ${esc([p.種類, p.能力].filter(Boolean).join(" "))}<small> ${esc(p.from)}</small></button>`).join("")}</div></div>` : "") +
+    `<div class="mt"><div class="mr mh"><span>区分</span><span>分類</span><span>機械名</span><span>能力</span><span>台</span><span></span><span></span></div>${r.機械.map((m, i) => row(m, i)).join("")}${row({}, r.機械.length, true)}</div>` +
+    `<div class="fv"><div class="hint">マスを押して選ぶ（どのマスからでも。選んだものでほかのマスの候補が絞れる）。＋ 下に行を足す・− 消す。リース会社は「区分」で選ぶ。</div></div>`;
 }
 function zai(r) {
   return fh("材料", false, "押すと 分類・材料名・規格 で絞り込み") +
@@ -488,13 +673,14 @@ $("pane").addEventListener("input", e => {
   let v = el.value;
   if (el.inputMode === "decimal") v = han(v);
   if (el.type === "time") v = normTime(v);
+  if (o === S.rec && (el.dataset.f === "始業" || el.dataset.f === "終業")) { const old = o[el.dataset.f]; o.作業員.concat(o.外注).forEach(w => { if (w[el.dataset.f] === old) w[el.dataset.f] = v; }); }   // 作業時間を直すと、同じ時刻の人も直す
   o[el.dataset.f] = v; touch();
   if (el.dataset.f === "日付") render();
-  if (el.type === "time") { const card = el.closest(".card"); const z = card && card.querySelector('[data-f="残"]'); const w = target(el); if (z && w) z.placeholder = zan(w.始業, w.終業, w.昼夜) || "0"; }
 });
 $("pane").addEventListener("change", e => { const el = e.target; if (el.inputMode === "decimal" && el.value !== han(el.value)) el.value = han(el.value); if (el.dataset.f && el.tagName !== "TEXTAREA") render(); });
 $("pane").addEventListener("click", e => {
   const sg = e.target.closest("[data-seg]");
+  if (sg && !sg.dataset.l && sg.dataset.seg === "勤務") { setShift(S.rec, sg.dataset.v); touch(); render(); return; }
   if (sg) { const o = sg.dataset.l ? S.rec[sg.dataset.l][+sg.dataset.i] : S.rec, f = sg.dataset.seg; o[f] = o[f] === sg.dataset.v && (f === "天気" || f === "区分") ? "" : sg.dataset.v; touch(); render(); return; }
   const b = e.target.closest("[data-act]"); if (!b) return;
   const r = S.rec, i = +b.dataset.i, l = b.dataset.l, act = b.dataset.act;
@@ -503,13 +689,34 @@ $("pane").addEventListener("click", e => {
     case "planAll": return applyPlan(b.dataset.i, "all");
     case "planHito": return applyPlan(b.dataset.i, "hito");
     case "planGai": { const x = planOf(r).list[i]; return addGaiFlow(x.外注.業者, x.作業, x.夜 ? "夜" : "昼"); }
-    case "del": { const a = r[l]; const what = l === "作業" ? "この行" : (a[i].名前 || a[i].使用機材 || a[i].材料名 || a[i].種類 || "これ"); if (!confirm(what + " を消しますか？")) return; a.splice(i, 1); if (l === "作業" && !a.length) a.push({ 予定: "", 報告: "" }); touch(); render(); return; }
+    case "del": if (l === "作業") {
+      const w = r.作業[i], col = S.mode === "報告" ? "報告" : "予定", oth = col === "報告" ? "予定" : "報告", on = oth === "予定" ? "作業予定" : "完了報告";
+      if (!confirm(w[oth] ? `${on}も消えますがよいですか？\n（${on}：${w[oth]}）` : "この行を消しますか？")) return;
+      r.作業.splice(i, 1); if (!r.作業.length) r.作業.push({ 予定: "", 報告: "" }); touch(); render(); return;
+    } else { const a = r[l]; const what = l === "作業" ? "この行" : (a[i].名前 || a[i].使用機材 || a[i].材料名 || a[i].種類 || "これ"); if (!confirm(what + " を消しますか？")) return; a.splice(i, 1); if (l === "作業" && !a.length) a.push({ 予定: "", 報告: "" }); touch(); render(); return; }
     case "copyPlan": {
       const n = r.作業.filter(w => w.予定 && !w.報告).length;
       if (!n) { toast("写す作業予定がありません（完了報告が空の行だけ写します）"); return; }
       r.作業.forEach(w => { if (w.予定 && !w.報告) w.報告 = w.予定; }); touch(); render(); toast(n + "行を完了報告へ写しました"); return;
     }
     // 2026-11-18 ユーザー：常用・請負を選ばせるのをやめ、常用の印だけ（触らなければ請負のまま次に進める）
+    case "wx": { const a = wxSet(r.天気), v = b.dataset.v, n = a.includes(v) ? a.filter(x => x !== v) : [...a, v]; r.天気 = WX5.map(x => x[0]).filter(x => n.includes(x)).join("/"); touch(); render(); return; }
+    case "kion": return wheel({ title: "気温", vals: range(-10, 40), cur: r.気温 !== "" && r.気温 != null ? r.気温 : TEMP[+r.日付.slice(5, 7) - 1], unit: "℃", clear: true, done: v => { r.気温 = v; touch(); render(); } });
+    // 機械（2026-11-19 ユーザー：表の形 区分｜分類｜機械名｜能力｜＋｜−。マスはどれからでも押せて、ほかのマスの候補が絞れる）
+    case "mcell": {
+      if (i >= r.機械.length) r.機械.push(blankM());
+      const k = b.dataset.k;
+      if (k === "区分") return kubunSheet(i);
+      if (k === "種別") return catSheet(i);
+      if (k === "名前") return nameSheet(i);
+      if (k === "能力") return capSheet(i);
+      return wheel({ title: "台数", vals: range(1, 30), cur: r.機械[i].数量 || 1, unit: "台", done: v => { r.機械[i].数量 = v; touch(); render(); } });
+    }
+    case "mplus": r.機械.splice(i + 1, 0, blankM()); touch(); render(); return;
+    case "mminus": { const m = r.機械[i]; if ((m.使用機材 || m.区分) && !confirm(`${m.使用機材 || "この行"} を消しますか？`)) return; r.機械.splice(i, 1); touch(); render(); return; }
+    case "addPlanned": { const p = plannedMachines(r)[i]; if (!p) return; if (hasPlanned(r, p)) { toast("もう入っています"); return; }
+      r.機械.push({ 区分: p.区分, 会社: p.会社, 種別: p.cat, 使用機材: p.名前, 種類: p.種類 || "", 規格: p.能力, 分類: p.分類 || "", 数量: String(p.数量 || 1), 所有者: p.区分 === "自社" ? SELF : p.会社 || "リース" }); touch(); render(); return; }
+    case "candEdit": return candEdit();
     case "joyo": r.区分 = r.区分 === "常用" ? "請負" : "常用"; S.autoJoyo = null; touch(); render(); return;
     case "addSagyo": r.作業.push({ 予定: "", 報告: "" }); touch(); render(); return;
     case "pickMoto": return pick({ title: "元請業者", groups: [{ items: motoList().map(v => ({ v })) }], value: r.元請, clear: true, free: true, empty: "元請の一覧がありません", done: v => { r.元請 = v; S.autoMoto = null; touch(); render(); } });
@@ -537,7 +744,7 @@ $("pane").addEventListener("click", e => {
           chgco: () => pickCompany(co => { if (nk(co) !== nk(w.会社)) { w.会社 = co; w.名前 = ""; } touch(); render(); document.querySelector(`[data-act="pickName"][data-l="外注"][data-i="${i}"]`).click(); }) });
       }
       const a = own();
-      return pick({ title: "作業員", groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => ({ v: p.名前, kana: p.かな, used: usedName(p.名前, w.昼夜) && nk(p.名前) !== nk(w.名前) })) })), value: w.名前, done: set(w, "名前") });
+      return pick({ title: "作業員", groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => ({ v: p.名前, kana: p.かな, used: usedName(p.名前, w.昼夜) && nk(p.名前) !== nk(w.名前) })) })), value: w.名前, done: v => { if (!okElsewhere([v])) return; w.名前 = v; touch(); render(); } });
     }
     case "pickKoshu": {
       const w = r[l][i], p = planOf(r);
@@ -547,8 +754,6 @@ $("pane").addEventListener("click", e => {
       return pick({ title: "工種", groups: [{ name: "この日の工程", items: fromPlan.map(v => ({ v })) }, { name: "この現場のほかの日の工程", items: siteOther.map(v => ({ v })) }, { name: "前に使った工種", items: [...new Set(used)].map(v => ({ v })) }], value: w.工種, clear: true, free: true, empty: "候補がありません。「候補に無いものを書く」で入れてください", done: set(w, "工種") });
     }
     case "addGai": return pickCompany(co => addGaiFlow(co, "", r.勤務));
-    case "addKikai": r.機械.push({ 区分: "", 会社: "", 使用機材: "", 種類: "", 規格: "", 所有者: "", 数量: "1" }); touch(); render(); return pickMachine(r.機械.length - 1, true);
-    case "pickKiki": return pickMachine(i);
     case "qty": { const o = r[l][i], f = b.dataset.f; o[f] = String(Math.max(1, (+o[f] || 1) + +b.dataset.d)); touch(); render(); return; }
     case "addZai": r.材料.push({ 分類: "", 材料名: "", 規格: "", 単位: "", 数量: "", 実費: "" }); touch(); render(); return pickMaterial(r.材料.length - 1, true);
     case "pickZai": return pickMaterial(i);
@@ -574,12 +779,20 @@ $("pane").addEventListener("click", e => {
     case "pickCar": { const c = r.車[i]; return pick({ title: "車両名", groups: [{ name: "自社車両", items: S.M.車両.map(x => ({ v: x.車両名, sub: x.車番 })) }, { name: "前に使った車両", items: usedVals("車", "車両名").filter(v => !S.M.車両.some(x => x.車両名 === v)).map(v => ({ v })) }], value: c.車両名, clear: true, free: true, done: v => { c.車両名 = v; const x = S.M.車両.find(y => y.車両名 === v); if (x && x.車番) c.車番 = x.車番; touch(); render(); } }); }
   }
 });
+// 2026-11-19 ユーザー：ほかの現場に入っている人を入れようとしたら警告（同じ日・同じ昼夜の ほかの現場の日報／全体工程）
+function elsewhere(name, r) {
+  r = r || S.rec; const out = [];
+  recs().forEach(x => { if (x.id === r.id || x.日付 !== r.日付 || (x.勤務 || "昼") !== r.勤務 || sameSite(x.現場, r.現場)) return; if ((x.作業員 || []).concat(x.外注 || []).some(w => nk(w.名前) === nk(name))) out.push(x.現場 + "（日報）"); });
+  S.sites.forEach(s => { if (r.現場 && sameSite(s.名前, r.現場)) return; const p = planOf({ 現場: s.名前, 日付: r.日付 }); if (p && p.list.some(x => (x.夜 ? "夜" : "昼") === r.勤務 && x.社員.some(n => nk(n) === nk(name)))) out.push(s.名前 + "（全体工程）"); });
+  return [...new Set(out)];
+}
+const okElsewhere = names => { const a = names.map(n => [n, elsewhere(n)]).filter(x => x[1].length); return !a.length || confirm(a.map(([n, e]) => `${n}：${e.join("・")}`).join("\n") + "\n\nほかの現場に入っています。入れますか？"); };
 const usedName = (n, sh) => S.rec.作業員.some(w => nk(w.名前) === nk(n) && w.昼夜 === sh) || S.rec.外注.some(w => nk(w.名前) === nk(n) && w.昼夜 === sh);
 function pickWorkers() {
   const r = S.rec, a = own(), sh = r.勤務;
   pick({ title: `作業員を選ぶ（${sh}）`, multi: true, note: "いくつも選べます。選んだら「入れる」。",
-    groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => ({ v: p.名前, kana: p.かな, used: usedName(p.名前, sh) })) })),
-    done: list => { const n = addWorkers(list, "", sh); touch(); render(); if (n) toast(n + "人を入れました"); } });
+    groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => { const e = elsewhere(p.名前); return { v: p.名前, kana: p.かな, used: usedName(p.名前, sh), sub: e.length ? "⚠" + e[0] : "" }; }) })),
+    done: list => { if (!okElsewhere(list)) return false; const n = addWorkers(list, "", sh); touch(); render(); if (n) toast(n + "人を入れました"); } });
 }
 // 外注の会社：その日の全体工程の外注 → この現場の工程の外注 → 前に使った会社 → ほか（たたむ）。2026-11-19 ユーザー：外注名は全体工程から候補・絞り込める
 function pickCompany(done) {
@@ -592,11 +805,13 @@ function pickCompany(done) {
   pick({ title: "外注の会社", groups, free: true, note: r.現場 ? "" : "「基本」で現場を選ぶと、全体工程の外注が上に出ます。", empty: "外注業者の一覧がありません", done });
 }
 function pushGai(co, nm, sh, 工種, 人数) {
-  const row = { 会社: co, 名前: nm || "", 昼夜: sh, 始業: TEIJI[sh][0], 終業: TEIJI[sh][1], 工種: 工種 || "", 残: "" };
+  sh = S.rec.勤務;
+  const row = { 会社: co, 名前: nm || "", 昼夜: sh, 始業: dayTime(sh)[0], 終業: dayTime(sh)[1], 工種: 工種 || "", 残: "" };
   if (!nm) row.人数 = String(人数 || 1);
   S.rec.外注.push(row);
 }
 function addGaiFlow(co, 工種, sh) {
+  sh = S.rec.勤務;
   const m = membersOf(co);
   if (!m.length) return gaiNoMember(co, 工種, sh);
   pick({ title: `${co} の人（${sh}）`, multi: true, free: true, note: `<b>${esc(co)}</b> の人だけを出しています（ほかの会社の人は出しません）。名簿にいない人は下の「候補に無いものを書く」。`,
@@ -609,6 +824,7 @@ function addGaiFlow(co, 工種, sh) {
 }
 // 名簿にその会社の人がいないとき（2026-11-19 ユーザー：オリノを押すと「名簿にいません」で先に進めない）→ 名前を書く か 人数だけ で進める
 function gaiNoMember(co, 工種, sh) {
+  sh = S.rec.勤務;
   let n = 1; const names = [];
   const draw = () => {
     $("sBody").innerHTML = `<div class="warn">名簿に「${esc(co)}」の人がまだいません。名前を書くか、名前未定のまま人数だけ入れて先に進めます（名簿にはあとで足せます）。</div>` +
@@ -638,28 +854,32 @@ function toForm(r) {
   const n = Math.max(r.作業員.length, r.機械.length, r.材料.length), 下 = [];
   for (let i = 0; i < n; i++) {
     const row = Array(16).fill(""), w = r.作業員[i], m = r.機械[i], z = r.材料[i];
-    if (w) { row[0] = w.名前; row[1] = w.始業; row[2] = w.終業; row[3] = w.工種; row[4] = w.残 || zan(w.始業, w.終業, w.昼夜); row[12] = w.会社; row[14] = w.昼夜; }
+    if (w) { row[0] = w.名前; row[1] = w.始業; row[2] = w.終業; row[3] = w.工種; row[4] = w.残 || ""; row[12] = w.会社; row[14] = w.昼夜; }
     if (m) { row[5] = m.使用機材; row[6] = [m.種類, m.規格].filter(Boolean).join(" "); row[7] = m.数量; row[13] = m.所有者; }
     if (z) { row[9] = z.材料名 + (z.規格 ? " " + z.規格 : ""); row[10] = z.数量 + (z.数量 && z.単位 ? z.単位 : ""); row[15] = z.実費; }
     下.push(row);
   }
-  const 外注 = r.外注.map(w => { const row = Array(16).fill(""); row[0] = w.名前 || `（名前未定 ${w.人数 || 1}名）`; row[1] = w.始業; row[2] = w.終業; row[3] = w.工種; row[4] = w.残 || zan(w.始業, w.終業, w.昼夜); row[12] = w.会社; row[14] = w.昼夜; return row; });
+  const 外注 = r.外注.map(w => { const row = Array(16).fill(""); row[0] = w.名前 || `（名前未定 ${w.人数 || 1}名）`; row[1] = w.始業; row[2] = w.終業; row[3] = w.工種; row[4] = w.残 || ""; row[12] = w.会社; row[14] = w.昼夜; return row; });
   const 車 = r.車.map(c => [c.種類, c.種類 === "高速" ? c.往復 : "", c.種類 === "高速" ? c.区間 : "", c.種類 === "高速" ? "" : c.給油, c.実費, c.会社, c.名前, c.車両名, c.車番, c.メモ]);
   return { 元請業者: r.元請, 現場名: r.現場, 日付: r.日付, 日: { 天気: r.天気, 気温: r.気温, 担当者: r.記入者, 形態: r.区分 === "常用" ? "常用" : "請負", 上, 下, 外注, 車 } };
 }
 function showForm() {
   const f = toForm(S.rec), d = f.日;
   const tb = (heads, rows) => `<div class="tw"><table><tr>${heads.map(h => `<th>${h}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${heads.length}">（なし）</td></tr>`}</table></div>`;
-  const DN = [[12, "会社"], [0, "作業員名"], [14, "昼夜"], [1, "始業時間"], [2, "終業時間"], [3, "工種"], [4, "残"], [5, "使用機材"], [6, "規格・形式"], [13, "所有者"], [7, "数量"], [9, "材料名"], [10, "数量"], [15, "実費"]];
+  // 2026-11-19 ユーザー：何も書いていない行・欄は出さない。作業員・使用機材・材料は別々の表に（横に長すぎた）
+  const sec = (t, heads, rows) => rows.length ? `<h3>${t}</h3>` + tb(heads, rows) : "";
   openSheet("作業日報の形", `<div class="fm">
-    <div class="hint">PC の作業日報と同じ並びです（列の名前も同じ）。この形で詳細日報に入れられます。</div>
+    <div class="hint">PC の作業日報と同じ中身を、書いた欄だけ表に分けて出しています。</div>
     <div class="tw"><table class="kv"><tr><td>元請業者</td><td>${esc(f.元請業者)}</td><td>日付</td><td>${esc(f.日付)}（${WD[dateOf(f.日付).getDay()]}）</td></tr>
     <tr><td>現場名</td><td>${esc(f.現場名)}</td><td>天気・気温</td><td>${esc(d.天気)} ${d.気温 ? esc(d.気温) + "℃" : ""}</td></tr>
+    <tr><td>昼夜</td><td>${esc(S.rec.勤務)}</td><td>作業時間</td><td>${esc(S.rec.始業 || "")}〜${esc(S.rec.終業 || "")}</td></tr>
     <tr><td>記入者</td><td>${esc(d.担当者)}</td><td>区分</td><td>${esc(d.形態 === "常用" ? "常用" : "請負")}</td></tr></table></div>
-    <h3>作業予定・完了報告</h3>${tb(["作業予定", "完了報告"], d.上.map(r => [r[1], r[4]]))}
-    <h3>作業員・使用機材・材料</h3>${tb(DN.map(x => x[1]), d.下.map(r => DN.map(x => r[x[0]])))}
-    <h3>外注</h3>${tb(["会社", "作業員名", "昼夜", "始業時間", "終業時間", "工種", "残"], d.外注.map(r => [r[12], r[0], r[14], r[1], r[2], r[3], r[4]]))}
-    <h3>高速・燃料</h3>${tb(["種類", "往復", "高速の区間", "給油(L)", "実費", "会社", "名前", "車両名", "車番", "メモ"], d.車)}
+    ${sec("作業予定・完了報告", ["作業予定", "完了報告"], d.上.map(r => [r[1], r[4]]).filter(r => r[0] || r[1]))}
+    ${sec("作業員", ["会社", "作業員名", "始業時間", "終業時間", "工種", "残", "作業内容"], S.rec.作業員.map(w => [w.会社, w.名前, w.始業, w.終業, w.工種, w.残 || "", w.内容 || ""]))}
+    ${sec("使用機材", ["使用機材", "規格・形式", "所有者", "数量"], S.rec.機械.filter(m => m.使用機材 || m.区分).map(m => [m.使用機材, [m.種類, m.規格].filter(Boolean).join(" "), m.所有者, m.数量]))}
+    ${sec("材料", ["材料名", "数量", "実費"], S.rec.材料.filter(z => z.材料名).map(z => [z.材料名 + (z.規格 ? " " + z.規格 : ""), z.数量 + (z.数量 && z.単位 ? z.単位 : ""), z.実費]))}
+    ${sec("外注", ["会社", "作業員名", "始業時間", "終業時間", "工種", "残", "作業内容"], S.rec.外注.map(w => [w.会社, w.名前 || `（名前未定 ${w.人数 || 1}名）`, w.始業, w.終業, w.工種, w.残 || "", w.内容 || ""]))}
+    ${sec("高速・燃料", ["種類", "往復", "高速の区間", "給油(L)", "実費", "会社", "名前", "車両名", "車番", "メモ"], d.車)}
   </div>`);
 }
 $("bForm").onclick = showForm;
@@ -677,6 +897,7 @@ $("bSave").onclick = () => {
   if (p.length) { alert("保存できません：\n・" + p.join("\n・")); return; }
   const a = recs(), dup = a.find(x => x.id !== r.id && x.日付 === r.日付 && nk(x.現場) === nk(r.現場) && x.勤務 === r.勤務);
   if (dup && !confirm(`${jpd(r.日付)} の ${r.現場}（${r.勤務}）はもう保存してあります。別の日報として保存しますか？`)) return;
+  r.機械 = r.機械.filter(m => m.使用機材 || m.区分 || m.種別 || m.規格);
   r.更新 = new Date().toLocaleString("ja-JP");
   const i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = JSON.parse(JSON.stringify(r)); else a.push(JSON.parse(JSON.stringify(r)));
   if (putRecs(a)) { S.dirty = false; render(); toast("このブラウザに保存しました（試作）"); }
@@ -717,12 +938,15 @@ async function load(kst, mst, kk) {
   const [m, base, fix, ret, cars, genba, kado, files] = await Promise.all([opt(kst.get("マスタ.json")), opt(mst.get("人.json")), opt(mst.get("人_手直し.json")), opt(kst.get("退職者.json")), opt(kst.get("自社車両.json")),
     kk ? opt(kk.get("現場一覧.json")) : null, kk ? opt(kk.get("稼働データ.json")) : null, kst.list().catch(() => [])]);
   S.M = { 社員: (m && m.社員) || [], 従業員: (m && m.従業員) || [], 外注業者: (m && m.外注業者) || [], 現場: (m && m.現場) || [],
-    機械: ((kado && kado.機械) || []).filter(x => x && x.名前 && !x.使わない).map(x => ({ 名前: x.名前, 規格: x.規格 || "", 分類: x.分類 || "" })),
+    機械: ((kado && kado.機械) || []).filter(x => x && x.名前 && !x.使わない).map(x => ({ id: x.id, 名前: x.名前, 規格: x.規格 || "", 分類: x.分類 || "" })),
     車両: ((cars && cars.車両) || []).filter(x => x && x.車両名).map(x => ({ 車両名: x.車両名, 車番: x.車番 || x.登録番号 || "" })) };
-  if (DEMO && !S.M.機械.length) S.M.機械 = [{ 名前: "バックホウ", 規格: "0.25㎥", 分類: "小型機械" }, { 名前: "バックホウ", 規格: "0.45㎥", 分類: "小型機械" }, { 名前: "ダンプ", 規格: "4t", 分類: "車両" }, { 名前: "ダンプ", 規格: "3t", 分類: "車両" }, { 名前: "電動ブレーカー1", 規格: "", 分類: "小型機械" }, { 名前: "電動ブレーカー2", 規格: "", 分類: "小型機械" }];
+  if (DEMO && !S.M.機械.length) S.M.機械 = [{ id: "d1", 名前: "バックホウ", 規格: "0.25BH", 分類: "重機" }, { id: "d2", 名前: "バックホウ", 規格: "0.45BH", 分類: "重機" }, { id: "d3", 名前: "ダンプ", 規格: "4t", 分類: "車両" }, { id: "d4", 名前: "ダンプ", 規格: "3t", 分類: "車両" }, { id: "d5", 名前: "電動ブレーカー1", 規格: "", 分類: "小型機械" }, { id: "d6", 名前: "電動ブレーカー2", 規格: "", 分類: "小型機械" }, { id: "d7", 名前: "発電機", 規格: "2K", 分類: "小型機械" }, { id: "d8", 名前: "ランマ1", 規格: "", 分類: "小型機械" }];
   if (DEMO && !S.M.車両.length) S.M.車両 = [{ 車両名: "試しの車（バン）", 車番: "試し 1" }];
   S.people = HX.people(base, fix, ret);
   S.genba = (genba && genba.現場) || [];
+  S.kmap = {}; ((kado && kado.機械) || []).forEach(x => x && x.id && (S.kmap[x.id] = x));
+  S.yoyaku = (kado && kado.予約) || [];
+  if (DEMO && !S.yoyaku.length) { const k = today(); S.M.機械.forEach(x => S.kmap[x.id] = x); S.yoyaku = [{ 機械: "d2", 区分: "昼", 現場: "A現場 配水管", 開始: addDays(k, -2), 終了: addDays(k, 4), 土: true, 日祝: true, 休み: [], 出勤: [] }, { 機械: "d3", 区分: "昼", 現場: "A現場 配水管", 開始: k, 終了: k, 土: true, 日祝: true, 休み: [], 出勤: [] }]; }
   const names = files.map(f => f.name).filter(n => /^現場_.+\.json$/.test(n));
   const got = [];
   for (let i = 0; i < names.length; i += 8) got.push(...await Promise.all(names.slice(i, i + 8).map(n => opt(kst.get(n)))));
