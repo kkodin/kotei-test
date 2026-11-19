@@ -387,6 +387,7 @@ function showEv(x) {
    o.person：その人のます目から（自分でなければ代理）。o.place/code：全体工程の予定から。o.copy：コピーして登録 */
 function editEv(k, r0, o = {}) {
   const isNew = !r0;
+  if (isNew && !o.copy && phoneView()) { location.href = detailUrl(o.place || "", o.code || "", k); return; }   // 2026-11-19 ユーザー：スマホの新規は日報スマホで
   const E = r0 ? JSON.parse(JSON.stringify(r0)) : o.copy || { id: uid(), 行先: "", コード: "", 始め: "", 終わり: "", 終日: false, 作業: "", 作業行: [{ 予定: "", 報告: "" }], 予定: { 人: [], 外注: [], 機械: [] }, 人: [], 外注: [], 機械: [] };
   let day = k;
   if (isNew && !o.copy && o.person && nk(o.person) !== nk(S.me.name)) { E.本人 = false; E.人 = [o.person]; }
@@ -547,7 +548,7 @@ async function openDay(k, who) {
 // 他の人の日報は書けない（見るだけ）ので知らせる
 function newReport(k, n) {
   if (n && nk(n) !== nk(S.me.name)) { toast(`${n} さんの ${fmtDay(k)} の日報はまだありません。他の人の日報は、その人が書きます（同じ現場に行った人は、その人の日報を直せます）`, 6000); return; }
-  if (window.innerWidth >= 760) { location.href = detailUrl("", "", k); return; }
+  if (window.innerWidth >= 760 || phoneView()) { location.href = detailUrl("", "", k); return; }   // スマホは日報スマホ（2026-11-19）
   editEv(k, null, n ? { person: n } : undefined);
 }
 function goWeek() { closeDlg(); S.view = "cal"; CAL.mode = "week"; calSave(); render(); }

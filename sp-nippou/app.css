@@ -229,3 +229,9 @@ label.lb { display: block; font-size: 12px; color: #666; margin: 6px 0 2px; }
 .ce { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
 .ce span { flex: 1; min-width: 0; }
 .ce small { color: #777; }
+
+/* 本物の日報：使用中の札 */
+.lockbar { margin: 6px 12px; padding: 8px 10px; border-radius: 8px; background: #eef2f6; border: 1px solid #b0bec5; font-size: 14px; line-height: 1.6; }
+.lockbar.ask { background: #fff4ea; border-color: var(--or); }
+.lockbar button { margin-left: 6px; }
+.tag.ng { background: #fde0e0; color: #c62828; }

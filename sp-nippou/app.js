@@ -1,4 +1,4 @@
-/* 日報スマホ（試作。2026-11-18 ユーザー）
+/* 日報スマホ（2026-11-18 ユーザー。2026-11-19 本物の日報へ書く＝real.js・本番へ）
    ・PC の作業日報（詳細日報）と同じ中身をスマホで打てるように：上の欄（元請業者・現場名・日付・天気・気温・記入者・区分）／作業予定・完了報告／
      作業員・使用機材・材料／外注／高速・燃料。スマホではタブで分ける（基本・作業・作業員・機械・材料・外注・高速・燃料）。
    ・予定か報告か：上の「予定｜報告」で、作業の欄に書くのが作業予定か完了報告かを決める（PC の「作業予定を完了報告へコピー」と同じボタンもある）。
@@ -6,7 +6,7 @@
    ・外注は会社を先に選び、その会社の人だけを出す（ほかの会社の人を出さない。名簿の 会社 と違う人は保存できない）。
    ・【大事】スマホで文字を打てるプルダウンを使わない（キーボードが候補を隠す。2026-11-18 ユーザー）。候補は「押すと下から出る窓」で選ぶ。
      候補に無いものを書くときだけ「書く」を押してキーボードを出す。
-   ・保存はこのブラウザの中だけ（spn_proto_v1）。本物の日報には書かない。「作業日報の形で見る」で PC の用紙の並び（上・下・外注・車）を確かめる。
+   ・保存は 先にこのスマホに控え（spn_proto_v1）、それから本物の日報へ（real.js）。「作業日報の形で見る」で PC の用紙の並びを確かめる。
    ・公開の置き場に置くので、この中に本当の人の名前・会社名を書かない（名前はサインインして OneDrive から読む。試しは作りもの）。 */
 "use strict";
 const $ = id => document.getElementById(id);
@@ -455,7 +455,7 @@ function capSheet(i) {
     empty: "候補がありません。「候補に無いものを書く」で入れてください",
     done: v => { const it = base.find(x => capL(x) === v); if (it) { m.種類 = it.種類 || ""; m.規格 = it.能力 || ""; } else { m.種類 = ""; m.規格 = v; } autofill(m); touch(); render(); } });
 }
-/* ---- 候補編集（2026-11-19 ユーザー：別の窓でリース会社名・機械名などを直せる）。このブラウザの中だけ（試作） ---- */
+/* ---- 候補編集（2026-11-19 ユーザー：別の窓でリース会社名・機械名などを直せる）。いまはこのスマホの中だけ ---- */
 const CKEY = "spn_cand_v1";
 const cand = () => { const d = { 会社足す: [], 会社消す: [], 会社名: {}, 機械足す: [], 機械消す: [] }; try { return Object.assign(d, JSON.parse(localStorage.getItem(CKEY)) || {}); } catch (e) { return d; } };
 const putCand = c => { try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) { toast("このブラウザに保存できません：" + e.message); } };
@@ -476,7 +476,7 @@ function candEdit() {
     const cos = leaseCos(); if (owner !== "自社" && !cos.includes(owner)) owner = "自社";
     const items = machineItems().filter(x => x.tag !== "前に使った" && (owner === "自社" ? x.区分 === "自社" : x.区分 === "リース" && nk(x.会社) === nk(owner)));
     const byCat = CATS.map(([c, ic]) => [c, ic, items.filter(x => x.cat === c)]).filter(x => x[2].length);
-    $("sBody").innerHTML = `<div class="hint">直した候補は、このブラウザの中だけに入ります（試作）。</div>` +
+    $("sBody").innerHTML = `<div class="hint">直した候補は、このスマホの中だけに入ります（ほかの人には出ません）。</div>` +
       `<div class="fz"><div class="fzh">リース会社</div>${cos.map(c => `<div class="ce"><span>${esc(c)}</span><button type="button" class="sub small" data-ren="${esc(c)}">直す</button><button type="button" class="sub small" data-delco="${esc(c)}">消す</button></div>`).join("")}` +
       (coEdit ? `<div class="row2" style="margin-top:6px"><input type="text" id="ceIn" value="${esc(coEdit.v || "")}"><button type="button" class="pri small" data-ceok="1" style="flex:none">${coEdit.co ? "直す" : "足す"}</button></div>` : `<button type="button" class="sub" data-addco="1" style="margin-top:6px">＋ 会社を足す</button>`) + `</div>` +
       `<div class="fz"><div class="fzh">機械（だれの機械か押す）</div><div class="chips">${["自社", ...cos].map(c => `<button type="button" data-ow="${esc(c)}" class="${owner === c ? "on" : ""}">${esc(c)}</button>`).join("")}</div>` +
@@ -549,7 +549,7 @@ function render() {
     if (s) { if (c) s.textContent = c; else s.remove(); }
     if (on && S.tabScroll !== S.tab) { S.tabScroll = S.tab; b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }
   });
-  $("cur").innerHTML = `<b>${jpd(r.日付)}</b>　${r.勤務}　${r.現場 ? `<b>${esc(r.現場)}</b>` : '<span class="ng">現場を選んでください</span>'}　${r.区分 === "常用" ? "<b>常用</b>" : "請負"}${S.dirty ? "　<small>（保存していません）</small>" : ""}`;
+  $("cur").innerHTML = `<b>${jpd(r.日付)}</b>　${r.勤務}　${r.現場 ? `<b>${esc(r.現場)}</b>` : '<span class="ng">現場を選んでください</span>'}　${r.区分 === "常用" ? "<b>常用</b>" : "請負"}${S.dirty ? "　<small>（保存していません）</small>" : ""}${r.未送信 ? '　<span class="ng">未送信</span>' : ""}${r.src && r.記入者 ? `<small>　記入者 ${esc(r.記入者)}</small>` : ""}`;
   $("pane").innerHTML = ({ kihon, sagyo, hito, kikai, zai, gai, car })[S.tab](r);
 }
 const fh = (t, req, note, right) => `<div class="fh">${t}${req ? ' <span class="req">＊</span>' : ""}${note ? ` <span class="note">${note}</span>` : ""}${right ? `<span class="r">${right}</span>` : ""}</div>`;
@@ -571,7 +571,7 @@ function kihon(r) {
     fr("天気", false, WX5.map(([v, t]) => { const on = wxSet(r.天気).includes(v); return `<button type="button" class="chk wxb ${on ? "on" : ""}" data-act="wx" data-v="${v}">${on ? "☑" : "☐"}${t}</button>`; }).join(""), "wx") +
     fr("気温", false, `<button type="button" class="pk kionb ${r.気温 === "" || r.気温 == null ? "ph" : ""}" data-act="kion">${r.気温 === "" || r.気温 == null ? "押して選ぶ" : esc(r.気温) + " ℃"}</button>`, "kion") +
     fr("記入者", false, pkBtn(r.記入者, "押して選ぶ", 'data-act="pickMe"')) +
-    `</div><div class="fv hint">保存はこのブラウザの中だけです（試作）。本物の日報には書きません。</div>`;
+    `</div><div class="fv hint">「保存する」で本物の日報（PC の詳細日報・工事日報と同じ）に書きます。${jpd(MOVE_FROM)} より前の日は PC の詳細日報で書いてください。</div>`;
 }
 function sagyo(r) {
   const col = S.mode === "報告" ? "報告" : "予定", other = col === "報告" ? "予定" : "報告";
@@ -652,15 +652,15 @@ function gai(r) {
     `<button type="button" class="add" data-act="addGai">＋ 会社を選んで人を足す</button>`;
 }
 function car(r) {
-  return fh("高速・燃料", false, "高速＝往路・復路・往復と区間／燃料＝軽油・ガソリンと給油(L)。実費を入れるとその金額") +
-    (r.車.length ? r.車.map((c, i) => `<div class="card"><div class="ch">${segH("種類", ["高速", "軽油", "ガソリン"], c.種類, "車", i)}<button type="button" class="x" data-act="del" data-l="車" data-i="${i}">✕</button></div>` +
-      (c.種類 === "高速" ? `<label class="lb">往復</label>${segH("往復", ["往路", "復路", "往復"], c.往復, "車", i)}<label class="lb">高速の区間</label>${pkBtn(c.区間, "区間を選ぶ", `data-act="pickKukan" data-i="${i}"`)}`
-        : `<div style="max-width:160px"><label class="lb">給油(L)</label>${num("車", i, "給油", c.給油)}</div>`) +
-      `<div style="max-width:180px"><label class="lb">実費（円）</label>${num("車", i, "実費", c.実費)}</div>` +
-      `<label class="lb">だれ（会社・名前）</label>${pkBtn(c.名前 ? c.名前 + "（" + (c.会社 || "") + "）" : "", "押して選ぶ", `data-act="pickDriver" data-i="${i}"`)}` +
+  // 2026-11-19 詳細日報が「燃料カード・ETCカードの所有者別」の形になったのに合わせた（1台に1枚。燃料と ETC を同じカードに）
+  r.車.forEach(c => { if (c.給油 && !c.燃料) c.燃料 = c.給油; if (c.種類 === "高速" && c.実費 && !c.金額) c.金額 = c.実費; delete c.給油; delete c.種類; delete c.往復; delete c.実費; });   // 前の形の控え
+  return fh("高速・燃料", false, "1台に1枚（燃料と ETC を同じカードに）") +
+    (r.車.length ? r.車.map((c, i) => `<div class="card"><div class="ch">${pkBtn(c.名前 ? c.名前 + "（" + (c.会社 || "") + "）" : "", "だれ（会社・名前）", `data-act="pickDriver" data-i="${i}"`)}<button type="button" class="x" data-act="del" data-l="車" data-i="${i}">✕</button></div>` +
       `<div class="grid2"><div><label class="lb">車両名</label>${pkBtn(c.車両名, "選ぶ", `data-act="pickCar" data-i="${i}"`)}</div><div><label class="lb">車番</label>${inp("車", i, "車番", c.車番)}</div></div>` +
+      `<div class="grid2"><div><label class="lb">所有者</label>${pkBtn(c.所有者, "選ぶ", `data-act="pickOwner" data-i="${i}"`)}</div><div><label class="lb">燃料(L)</label>${num("車", i, "燃料", c.燃料)}</div></div>` +
+      `<div class="grid2"><div><label class="lb">ETC 使用区間</label>${pkBtn(c.区間, "区間を選ぶ", `data-act="pickKukan" data-i="${i}"`)}</div><div><label class="lb">ETC 金額（円）</label>${num("車", i, "金額", c.金額)}</div></div>` +
       `<label class="lb">メモ</label>${inp("車", i, "メモ", c.メモ)}</div>`).join("") : `<div class="empty">まだありません。</div>`) +
-    `<button type="button" class="add" data-act="addCar">＋ 高速・燃料を足す</button>`;
+    `<button type="button" class="add" data-act="addCar">＋ 車を足す</button>`;
 }
 
 /* ================= 入力 ================= */
@@ -675,7 +675,7 @@ $("pane").addEventListener("input", e => {
   if (el.type === "time") v = normTime(v);
   if (o === S.rec && (el.dataset.f === "始業" || el.dataset.f === "終業")) { const old = o[el.dataset.f]; o.作業員.concat(o.外注).forEach(w => { if (w[el.dataset.f] === old) w[el.dataset.f] = v; }); }   // 作業時間を直すと、同じ時刻の人も直す
   o[el.dataset.f] = v; touch();
-  if (el.dataset.f === "日付") render();
+  if (el.dataset.f === "日付") { render(); afterSitePick(); }
 });
 $("pane").addEventListener("change", e => { const el = e.target; if (el.inputMode === "decimal" && el.value !== han(el.value)) el.value = han(el.value); if (el.dataset.f && el.tagName !== "TEXTAREA") render(); });
 $("pane").addEventListener("click", e => {
@@ -728,7 +728,7 @@ $("pane").addEventListener("click", e => {
         const last = recs().filter(x => x.id !== r.id && sameSite(x.現場, v)).sort((a, b) => String(b.更新).localeCompare(String(a.更新)))[0];
         if (last) { r.区分 = last.区分 === "常用" ? "常用" : "請負"; S.autoJoyo = r.id; }
         else if (S.autoJoyo === r.id) { r.区分 = "請負"; S.autoJoyo = null; }   // 前の現場から自動で入れた印は持ち越さない
-        touch(); render();
+        touch(); render(); afterSitePick();
       } });
     }
     case "pickMe": { const a = own(); return pick({ title: "記入者", groups: ["社員", "従業員"].map(k => ({ name: k, items: a.filter(p => p.区分 === k).map(p => ({ v: p.名前, kana: p.かな })) })), value: r.記入者, done: set(r, "記入者") }); }
@@ -770,13 +770,14 @@ $("pane").addEventListener("click", e => {
         free: true, empty: "候補がありません。「候補に無いものを書く」か、欄に直接書いてください",
         done: list => { const add = list.filter(v => !has(v)); if (!add.length) return; w[col] = [String(w[col] || "").trim(), ...add].filter(Boolean).join("\n"); touch(); render(); toast(add.length + "つ足しました"); } });
     }
-    case "addCar": r.車.push({ 種類: "高速", 往復: "往復", 区間: "", 給油: "", 実費: "", 会社: "", 名前: "", 車両名: "", 車番: "", メモ: "" }); touch(); render(); return;
+    case "addCar": r.車.push({ 会社: "", 名前: "", 車両名: "", 所有者: "", 車番: "", 燃料: "", 区間: "", 金額: "", メモ: "" }); touch(); render(); return;
+    case "pickOwner": { const c = r.車[i]; return pick({ title: "所有者（燃料カード・ETC カード）", groups: [{ items: [SELF, ...leaseCos(), ...usedVals("車", "所有者")].filter((v, j, a) => v && a.indexOf(v) === j).map(v => ({ v })) }], value: c.所有者, clear: true, free: true, done: set(c, "所有者") }); }
     case "pickKukan": { const c = r.車[i]; return pick({ title: "高速の区間", groups: [{ name: "前に使った区間", items: usedVals("車", "区間").map(v => ({ v })) }], value: c.区間, clear: true, free: true, done: set(c, "区間") }); }
     case "pickDriver": {
       const c = r.車[i], list = r.作業員.concat(r.外注).filter(w => w.名前);
       return pick({ title: "だれ（今日の作業員・外注から）", groups: [{ items: list.map(w => ({ v: w.名前 + "\t" + (w.会社 || ""), label: w.名前, sub: w.会社 })) }], value: c.名前 + "\t" + c.会社, clear: true, empty: "先に作業員・外注を入れてください", done: v => { const [n, co] = String(v).split("\t"); c.名前 = n || ""; c.会社 = co || ""; touch(); render(); } });
     }
-    case "pickCar": { const c = r.車[i]; return pick({ title: "車両名", groups: [{ name: "自社車両", items: S.M.車両.map(x => ({ v: x.車両名, sub: x.車番 })) }, { name: "前に使った車両", items: usedVals("車", "車両名").filter(v => !S.M.車両.some(x => x.車両名 === v)).map(v => ({ v })) }], value: c.車両名, clear: true, free: true, done: v => { c.車両名 = v; const x = S.M.車両.find(y => y.車両名 === v); if (x && x.車番) c.車番 = x.車番; touch(); render(); } }); }
+    case "pickCar": { const c = r.車[i]; return pick({ title: "車両名", groups: [{ name: "自社車両", items: S.M.車両.map(x => ({ v: x.車両名, sub: x.車番 })) }, { name: "前に使った車両", items: usedVals("車", "車両名").filter(v => !S.M.車両.some(x => x.車両名 === v)).map(v => ({ v })) }], value: c.車両名, clear: true, free: true, done: v => { c.車両名 = v; const x = S.M.車両.find(y => y.車両名 === v); if (x && x.車番) c.車番 = x.車番; if (x && !c.所有者) c.所有者 = SELF; touch(); render(); } }); }
   }
 });
 // 2026-11-19 ユーザー：ほかの現場に入っている人を入れようとしたら警告（同じ日・同じ昼夜の ほかの現場の日報／全体工程）
@@ -879,12 +880,12 @@ function showForm() {
     ${sec("使用機材", ["使用機材", "規格・形式", "所有者", "数量"], S.rec.機械.filter(m => m.使用機材 || m.区分).map(m => [m.使用機材, [m.種類, m.規格].filter(Boolean).join(" "), m.所有者, m.数量]))}
     ${sec("材料", ["材料名", "数量", "実費"], S.rec.材料.filter(z => z.材料名).map(z => [z.材料名 + (z.規格 ? " " + z.規格 : ""), z.数量 + (z.数量 && z.単位 ? z.単位 : ""), z.実費]))}
     ${sec("外注", ["会社", "作業員名", "始業時間", "終業時間", "工種", "残", "作業内容"], S.rec.外注.map(w => [w.会社, w.名前 || `（名前未定 ${w.人数 || 1}名）`, w.始業, w.終業, w.工種, w.残 || "", w.内容 || ""]))}
-    ${sec("高速・燃料", ["種類", "往復", "高速の区間", "給油(L)", "実費", "会社", "名前", "車両名", "車番", "メモ"], d.車)}
+    ${sec("高速・燃料", ["会社名", "名前", "車両名", "所有者", "車番", "燃料(L)", "ETC 区間", "ETC 金額", "メモ"], S.rec.車.filter(carFilled).map(c => [c.会社, c.名前, c.車両名, c.所有者, c.車番, c.燃料, c.区間, c.金額, c.メモ]))}
   </div>`);
 }
 $("bForm").onclick = showForm;
 
-/* ================= 保存（このブラウザの中だけ） ================= */
+/* ================= 保存（このスマホに控え → 本物の日報） ================= */
 function problems(r) {
   const p = [];
   if (!r.現場) p.push("現場名を選んでください");
@@ -892,25 +893,38 @@ function problems(r) {
   r.外注.forEach((w, i) => { const e = rowErr("外注", w, i); if (e) p.push("外注 " + (w.名前 || (i + 1) + "人目") + "：" + e); });
   return p;
 }
-$("bSave").onclick = () => {
+// 2026-11-19 ユーザー：本物の日報へ書く。先にこのスマホに控え（電波が無くても消えない）、それから本物の日報（記入者ごとのファイル）へ
+async function doSave(quiet) {
   const r = S.rec, p = problems(r);
-  if (p.length) { alert("保存できません：\n・" + p.join("\n・")); return; }
-  const a = recs(), dup = a.find(x => x.id !== r.id && x.日付 === r.日付 && nk(x.現場) === nk(r.現場) && x.勤務 === r.勤務);
-  if (dup && !confirm(`${jpd(r.日付)} の ${r.現場}（${r.勤務}）はもう保存してあります。別の日報として保存しますか？`)) return;
+  if (p.length) { alert("保存できません：\n・" + p.join("\n・")); return false; }
   r.機械 = r.機械.filter(m => m.使用機材 || m.区分 || m.種別 || m.規格);
   r.更新 = new Date().toLocaleString("ja-JP");
-  const i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = JSON.parse(JSON.stringify(r)); else a.push(JSON.parse(JSON.stringify(r)));
-  if (putRecs(a)) { S.dirty = false; render(); toast("このブラウザに保存しました（試作）"); }
-};
+  const a = recs().filter(x => x.id === r.id || !(x.日付 === r.日付 && sameSite(x.現場, r.現場)));   // 同じ現場・同じ日の古い控えは置きかえる（日報は1つ）
+  const keep = () => { const i = a.findIndex(x => x.id === r.id), c = JSON.parse(JSON.stringify(r)); if (i >= 0) a[i] = c; else a.push(c); return putRecs(a); };
+  if (!realOn()) { if (keep()) { S.dirty = false; render(); toast("このスマホに控えました（サインインすると本物の日報に書きます）"); } return true; }
+  if (LK.sid && !LK.mine && LK.by) { alert(`${LK.by.名前}さんが詳細日報でこの現場を開いています（${hm(LK.by.開始)} から）。閉じるまで保存できません（このスマホには控えます）。`); r.未送信 = true; keep(); render(); return false; }
+  $("bSave").disabled = true; if (!quiet) toast("本物の日報に書いています…", 15000);
+  try {
+    if (!(await realSave(r))) { toast("保存をやめました"); return false; }
+    r.未送信 = false; keep(); S.dirty = false; render();
+    toast(`本物の日報に保存しました（記入者：${r.記入者}）。詳細日報・工事日報に出ます`, 5000);
+    return true;
+  } catch (e) {
+    console.warn(e); r.未送信 = true; keep(); render();
+    alert((e.locked ? "" : "本物の日報に書けませんでした（このスマホには控えました。電波のある所でもう一度「保存する」）：\n") + e.message);
+    return false;
+  } finally { $("bSave").disabled = false; }
+}
+$("bSave").onclick = () => doSave();
 $("bList").onclick = () => {
   const a = recs().sort((x, y) => (y.日付 + y.更新).localeCompare(x.日付 + x.更新));
-  openSheet("保存した日報（このブラウザ）", `<div class="list"><button type="button" class="pri small" data-new="1" style="margin:6px 0">＋ 新しく書く</button>` +
-    (a.map(r => `<div class="it"><div class="tx" data-open="${r.id}"><b>${jpd(r.日付)} ${esc(r.勤務)}</b> ${esc(r.現場)}${r.作業.some(w => w.予定) ? '<span class="tag y">予定</span>' : ""}${r.作業.some(w => w.報告) ? '<span class="tag h">報告</span>' : ""}<small>${r.区分 === "常用" ? "常用" : "請負"}　作業員 ${r.作業員.length}・外注 ${r.外注.length}　${esc(r.更新)}</small></div><button type="button" class="sub small" data-delrec="${r.id}">消す</button></div>`).join("") || `<div class="empty">まだありません</div>`) + `</div>`);
+  openSheet("このスマホで書いた日報", `<div class="list"><button type="button" class="pri small" data-new="1" style="margin:6px 0">＋ 新しく書く</button>` +
+    (a.map(r => `<div class="it"><div class="tx" data-open="${r.id}"><b>${jpd(r.日付)} ${esc(r.勤務)}</b> ${esc(r.現場)}${r.作業.some(w => w.予定) ? '<span class="tag y">予定</span>' : ""}${r.作業.some(w => w.報告) ? '<span class="tag h">報告</span>' : ""}${r.未送信 ? '<span class="tag ng">未送信</span>' : ""}<small>${r.区分 === "常用" ? "常用" : "請負"}　作業員 ${r.作業員.length}・外注 ${r.外注.length}　${esc(r.更新)}</small></div><button type="button" class="sub small" data-delrec="${r.id}">消す</button></div>`).join("") || `<div class="empty">まだありません</div>`) + `</div>`);
   $("sBody").onclick = e => {
     const leave = () => !S.dirty || confirm("いま書いている日報は保存していません。やめて開きますか？");
-    if (e.target.closest("[data-new]")) { if (!leave()) return; S.rec = blank(); S.dirty = false; S.tab = "kihon"; closeSheet(); render(); return; }
-    const o = e.target.closest("[data-open]"); if (o) { if (!leave()) return; const r = recs().find(x => x.id === o.dataset.open); if (r) { S.rec = r; S.dirty = false; S.tab = "kihon"; } closeSheet(); render(); return; }
-    const d = e.target.closest("[data-delrec]"); if (d) { const r = recs().find(x => x.id === d.dataset.delrec); if (!r || !confirm(`${jpd(r.日付)} ${r.現場} を消しますか？（このブラウザの試作の保存だけ）`)) return; putRecs(recs().filter(x => x.id !== r.id)); closeSheet(); $("bList").click(); }
+    if (e.target.closest("[data-new]")) { if (!leave()) return; S.rec = blank(); S.dirty = false; S.tab = "kihon"; closeSheet(); render(); lockTake(""); return; }
+    const o = e.target.closest("[data-open]"); if (o) { if (!leave()) return; const r = recs().find(x => x.id === o.dataset.open); if (r) { S.rec = r; S.dirty = false; S.tab = "kihon"; } closeSheet(); render(); afterSitePick(); return; }
+    const d = e.target.closest("[data-delrec]"); if (d) { const r = recs().find(x => x.id === d.dataset.delrec); if (!r || !confirm(`${jpd(r.日付)} ${r.現場} を一覧から消しますか？（このスマホの控えだけ。本物の日報は消えません）`)) return; putRecs(recs().filter(x => x.id !== r.id)); closeSheet(); $("bList").click(); }
   };
 };
 window.addEventListener("beforeunload", e => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -956,13 +970,13 @@ async function start() {
   if ($("ver").textContent.includes("__VER__")) $("ver").textContent = "開発中";
   let kst, mst, kk = null;
   if (DEMO) {
-    seedDemo(); kst = HX.demoStore("spn_demo_store2", ""); mst = HX.demoStore("spn_demo_store2", "マスタ/"); S.me = "試し　太郎";
+    seedDemo(); kst = HX.demoStore("spn_demo_store2", ""); mst = HX.demoStore("spn_demo_store2", "マスタ/"); S.me = "試し　太郎"; realInit(null);
   } else {
     let s;
     try { s = await HX.signIn(); } catch (e) { console.warn(e); }
     if (!s || !s.account) { $("signin").hidden = false; $("bSignIn").onclick = () => s && HX.login(s.app); return; }
     kst = HX.store(s.app, "kotei"); mst = HX.store(s.app, "kotei", "マスタ"); kk = window.HX_CONFIG.kikai && window.HX_CONFIG.kikai.itemId ? HX.store(s.app, "kikai") : null;
-    S.me = s.account.name || "";
+    S.me = s.account.name || ""; realInit(s.app);
   }
   $("app").hidden = false; $("act").hidden = false;
   S.rec = blank(); render();
@@ -971,5 +985,22 @@ async function start() {
   // 記入者：サインインした人が名簿にいればその人
   const me = own().find(p => nk(p.名前) === nk(S.me)); S.me = me ? me.名前 : ""; if (!S.rec.記入者 || !me) S.rec.記入者 = S.me;
   render(); toast(`読みました：現場 ${siteNames().length}・工程 ${S.sites.length}・名簿 ${S.people.length}人`);
+  // 作業報告カレンダー（工事日報）から：?d=日付&name=現場名&code=工事コード（2026-11-19 ユーザー：スマホの新規・編集は日報スマホで）
+  const q = new URLSearchParams(location.search), qd = q.get("d") || "", qc = q.get("code") || "", qn = q.get("name") || "";
+  if (qd || qn || qc) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(qd)) S.rec.日付 = qd;
+    const g = qc ? S.genba.find(x => String(x.コード) === qc) : null, nm = g ? g.名前 || g.正式名 : qn;
+    if (nm) { const s = siteNames().find(x => sameSite(x.名前, nm)); S.rec.現場 = s ? s.名前 : nm; if (s && s.元請) { S.rec.元請 = s.元請; S.autoMoto = S.rec.id; } }
+    S.tab = "kihon"; render(); afterSitePick();
+  }
+  const un = recs().filter(x => x.未送信).length;
+  if (un) setTimeout(() => toast(`本物の日報に送れていない日報が ${un} つあります（「一覧」から開いて「保存する」）`, 7000), 3500);
+  window.addEventListener("online", () => { if (S.rec && S.rec.未送信) toast("電波が戻りました。「保存する」で本物の日報に送ってください", 6000); });
 }
+// 2026-11-19 ユーザー：PC とスマホの分岐。日報スマホを開いた端末は、工事日報・詳細日報をスマホで開くとこちらへ（common/apps.js）。「PC版」で PC 版に固定
+if (HX.setView && !new URLSearchParams(location.search).has("pc")) HX.setView("");
+// カレンダーから来たときは「◀ 戻る」（カレンダーへ。スマホでもカレンダーのまま開く ?stay）
+if (new URLSearchParams(location.search).has("d")) $("bBack").hidden = false;
+$("bBack").onclick = () => { if (S.dirty && !confirm("保存していない内容があります。カレンダーに戻りますか？")) return; S.dirty = false; location.href = HX.appUrl("nippou", "?stay=1"); };
+$("bPc").onclick = () => { if (S.dirty && !confirm("保存していない内容があります。PC 版を開きますか？")) return; if (HX.setView) HX.setView("pc"); S.dirty = false; location.href = HX.appUrl("nippou", "?pc"); };
 start();

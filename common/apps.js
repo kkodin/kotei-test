@@ -16,8 +16,8 @@ window.HX = window.HX || {};
     { id: "haichi", name: "配置表", path: "haichi/", title: "配置表（見るだけ）" },
     { id: "meibo", name: "名簿", path: "meibo/", title: "人の名簿（確かめる・直す・足す・退職）" }
   ];
-  // テストの置き場（kotei-test・手元）だけの試作（2026-11-18 ユーザー）。本番には出さない
-  if (/\/kotei-test\//.test(HX.root) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) HX.APPS.push({ id: "spnippou", name: "日報スマホ", path: "sp-nippou/", title: "日報スマホ（試作。保存はこのブラウザだけ）" });
+  // 日報スマホ（2026-11-18 試作 → 2026-11-19 ユーザー：本物の日報へ書くようにして本番へ）
+  HX.APPS.push({ id: "spnippou", name: "日報スマホ", path: "sp-nippou/", title: "日報スマホ（スマホで日報を書く。PC の詳細日報と同じ日報）" });
   HX.demo = new URLSearchParams(location.search).has("demo");
   HX.appUrl = function (id, query) {
     const a = HX.APPS.find(x => x.id === id); if (!a) throw new Error("アプリが無い：" + id);
@@ -30,6 +30,23 @@ window.HX = window.HX || {};
     return HX.APPS.filter(a => p.startsWith(new URL(a.path, HX.root).href)).sort((a, b) => b.path.length - a.path.length)[0] || null;
   };
   HX.go = (id, query) => { location.href = HX.appUrl(id, query); };   // 同じ窓で（2026-11-03 ユーザー）
+  /* PC とスマホの分岐（2026-11-19 ユーザー：スマホ版を本番に。PC とスマホの分岐はどうするか → 案のとおり）
+     ・詳細日報（PC の用紙）を、スマホ（指で触る画面で、短い辺が 600px より小さい。iPad・PC はそのまま）で外から開いたら（ホーム画面・ブックマーク・リンク）日報スマホへ移す。
+       作業報告カレンダー（工事日報）はスマホでもカレンダーのまま（2026-11-19 ユーザー）。新規・編集を日報スマホで開くのは工事日報の link.js（detailUrl）。
+     ・アプリの中から移ったとき（タイトルのプルダウン・工事日報から詳細日報など、同じ置き場から来たとき）は移さない。
+     ・?pc で開くか、日報スマホの「PC版」を押した端末は、次からも移さない（日報スマホを開くと元に戻る）。 */
+  HX.isPhone = () => { try { return matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600; } catch (e) { return false; } };
+  HX.setView = v => { try { if (v) localStorage.setItem("hx_view", v); else localStorage.removeItem("hx_view"); } catch (e) { } };
+  (function () {
+    const q = new URLSearchParams(location.search), cur = HX.here();
+    if (q.has("pc")) { HX.setView("pc"); return; }
+    if (!cur || cur.id !== "shousai" || q.has("stay") || q.has("open") || q.has("from")) return;
+    let pref = "", inner = false;
+    try { pref = localStorage.getItem("hx_view") || ""; } catch (e) { }
+    try { const r = document.referrer && new URL(document.referrer); inner = !!r && r.href.startsWith(HX.root) && r.pathname !== location.pathname; } catch (e) { }   // 同じ画面の読み直しは外から
+    if (pref === "pc" || inner || !HX.isPhone()) return;
+    location.replace(HX.appUrl("spnippou"));
+  })();
   HX.renderApps = function (el, opt) {
     const o = opt || {}, cur = HX.here(), skip = new Set([cur && cur.id, ...(o.skip || [])]);
     // only：出すアプリをこの順で（2026-11-17 ユーザー：工程管理のアプリには 工事日報・全体工程・機械予定 の3つ）。<nav data-hx-apps="nippou,kotei,kikai">

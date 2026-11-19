@@ -6,7 +6,11 @@
 "use strict";
 const LINK_FROM = "2026-11-01";
 const LINKC = {};   // 月 → { t, docs }
-const detailUrl = (place, code, k) => HX.appUrl("shousai", `?open=entry&code=${encodeURIComponent(code || "")}&name=${encodeURIComponent(place || "")}&d=${k}`);
+// 2026-11-19 ユーザー：スマホは日報を新しく書く・直すのを日報スマホで（スケジュール登録の窓・詳細日報の用紙の代わり）。「PC版」を選んだ端末は今までどおり
+const phoneView = () => { try { return !!(HX.isPhone && HX.isPhone()) && localStorage.getItem("hx_view") !== "pc"; } catch (e) { return false; } };
+const detailUrl = (place, code, k) => phoneView()
+  ? HX.appUrl("spnippou", `?d=${k}&code=${encodeURIComponent(code || "")}&name=${encodeURIComponent(place || "")}`)
+  : HX.appUrl("shousai", `?open=entry&code=${encodeURIComponent(code || "")}&name=${encodeURIComponent(place || "")}&d=${k}`);
 async function jouyouDocs() {
   if (DEMO) { let a = {}; try { a = JSON.parse(localStorage.getItem("jouyou_demo_store")) || {}; } catch (e) { } return Object.entries(a).filter(([n]) => /^現場_.*\.json$/.test(n)).map(([, x]) => { try { return JSON.parse(x.data); } catch (e) { return null; } }).filter(Boolean); }
   const files = (await jouyouStore.list()).filter(f => /^現場_.*\.json$/.test(f.name));
