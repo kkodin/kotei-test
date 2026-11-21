@@ -19,6 +19,7 @@ async function linkGo(id, q) {
   location.href = linkUrl(id, q);
 }
 $("goNippou").onclick = () => linkGo("nippou", "?stay=1");
+$("bBackCal").onclick = () => linkGo("nippou", "?stay=1");   // 作業日報の上「← 作業報告カレンダーに戻る」（2026-11-21 ユーザー）
 // タイトルのプルダウン（common/appmenu.js）で移るときも、入力中の欄を確定して共有してから（2026-11-17）
 window.appMenuBefore = async () => { for (const k of ["up", "dn", "gai", "car"]) if (grids[k] && grids[k].editing()) grids[k].commit(); try { await Promise.race([sync(), new Promise(r => setTimeout(r, 2500))]); } catch (e) { } };
 $("goKotei").onclick = () => linkGo("kotei");
@@ -359,7 +360,8 @@ function linkEntry(n) {
   }
   history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
   // 工事日報で押した行（まだ日報の書式で書いていない行）：その人を記入者に、その行の中身を用紙に（2026-11-21 ユーザー）
-  LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "", hon: q.get("hon") === "1" } : null;
+  LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "", hon: q.get("hon") === "1", imp: q.get("imp") === "1" } : null;
+  if (LK.entry && LK.entry.imp) entryTanto();   // 配置表から取り込んだ行：記入者は配置表のその現場の担当者（writer.js）
   UI.gen = x.元請id; UI.site = x.id; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll(); askForm();
 }
 linkEntry();

@@ -505,3 +505,8 @@ table.smlist tbody tr { cursor: pointer; } table.smlist tbody tr:hover { backgro
 table.smlist tr.sun td.c { color: #c0392b; } table.smlist tr.sat td.c { color: #2b6cb0; }
 table.smlist tr.on { outline: 2px solid #1e5a96; outline-offset: -2px; }
 table.smlist tr:not(.has) td { color: #999; }
+
+/* 作業日報の上「← 作業報告カレンダーに戻る」（2026-11-21） */
+.backcal { align-self: stretch; width: 100%; box-sizing: border-box; margin: 8px 0 0; padding: 0 12px; text-align: left; }
+.backcal button { font-weight: bold; }
+@media print { .backcal { display: none; } }

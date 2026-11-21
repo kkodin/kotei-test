@@ -259,8 +259,11 @@ function withGai(d) {
 }
 // 常用／請負（2026-11-03 ユーザー）：現場の 形態、その日だけ変えるなら 日.形態。決めていない現場は開いたときに選ばせる（askForm）。常用でない日は金額に入れない。
 // 前回の設定を保持：選んだ区分を 現場.前回形態 に覚え、新しく書く日に入れる（日.形態）。前に書いた日は変わらない
-const formOf = (s, x) => ((s.日[x] || {}).形態) || s.形態 || "";
-const nextForm = s => s.前回形態 || s.形態 || "";
+// 区分（常用・請負）。2026-11-21 ユーザー：常用の現場でないのに ✓（今の常用現場は 塩浜立体・新宿南部だけ）
+//  ・工事日報の現場設定がある現場（s.形態共有）はそれが正本。その日に手で付け外しした日（日.形態手）だけ日ごとの区分
+//  ・現場設定の無い現場は今までどおり（前の日報の常用の金額を変えない）
+const formOf = (s, x) => { const d = s.日[x] || {}; if (d.形態手) return d.形態 || ""; if (s.形態共有) return s.形態 || ""; return d.形態 || s.形態 || ""; };
+const nextForm = s => s.形態共有 ? s.形態 || "" : s.前回形態 || s.形態 || "";
 /* 1日の入力ページ（2026-10-31 ユーザー：作業内容・人員・機械が多くて1ページに収まらない日は、入力ページを足せる）。
    ページ p は 上[p*5〜]・下[p*16〜]・車[p*3〜] の行（集計はページに関係なく全部の行）。d.頁＝ページの数（足した空のページも数える）。
    何も書いていないページは、ページ・日・現場を移るときに「消しますか」と聞く。 */
@@ -1006,9 +1009,7 @@ function buildSheet() {
     const s = site(), v = $("hForm").checked ? "常用" : "請負";
     if (!s) { $("hForm").checked = false; toast("先に「現場名」を押して現場を選んでください", 4000); return; }
     if (!canEdit()) { refreshSheet(); return; }
-    const d0 = day();
-    if (hasData(d0)) { pushUndo(); d0.形態 = v; d0.更新 = now(); }   // まだ書いていない日は覚えるだけ（書き始めたときに入る）
-    s.前回形態 = v; s.設定更新 = now();
+    pushUndo(); const d0 = ensureDay(); d0.形態 = v; d0.形態手 = true; d0.更新 = now();   // その日だけ（現場の区分は工事日報の現場設定で決める。2026-11-21）
     save(); renderPickers(); refreshSheet();
   });
   // （本社）✓（2026-11-18 ユーザー：本社勤務だが、この現場の仕事として扱う日。現場名が「本社」のときは出さない）。日.本社 = true
@@ -1048,7 +1049,7 @@ function refreshSheet() {
   $("hWx").innerHTML = `<option value="">　</option>` + wxs.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
   $("hWx").value = wx;
   if (document.activeElement !== $("hTmp")) $("hTmp").value = d ? d.気温 : "";
-  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : (typeof entryWriter === "function" && entryWriter()) || (ME && ME.名前) || "";   // 工事日報で押した行から開いたときは、その行の人（2026-11-21）   // 新規の日報（まだ書いていない日）の記入者＝編集している人。書き始めると日報に入る（writer.js の ensureDay）
+  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : (typeof entryWriterShown === "function" && entryWriterShown() !== null) ? entryWriterShown() : (ME && ME.名前) || "";   // 工事日報で押した行から開いたときは、その行の人（2026-11-21）   // 新規の日報（まだ書いていない日）の記入者＝編集している人。書き始めると日報に入る（writer.js の ensureDay）
   $("hTan").placeholder = s && s.担当者 ? "前回 " + s.担当者 : "";   // 記入者は日によって替わる（2026-10-31 ユーザー）。前回の人は薄い字で見せるだけ
   { const n = pageCount(d); if ((UI.pg || 0) > n - 1) UI.pg = n - 1;
     $("pgNo").textContent = n > 1 ? `（${(UI.pg || 0) + 1}／${n}ページ）` : "";
@@ -1707,7 +1708,7 @@ const tOfStr = v => { const m = /(\d{4})\D(\d{1,2})\D(\d{1,2})(?:\D+(\d{1,2}):(\
 // 2026-11-21 ユーザー：常用の現場以外に常用 ✓ が付いていた（詳細日報に前の「常用」が残り、工事日報で決めた「請負」より先に出ていた）→ 現場設定の方が新しければそちらにする
 async function formLoad() {
   if (DEMO || !signedIn()) { FORM_READY = true; askForm(); return; }
-  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (x && x.形態 && (!s.形態 || (x.形態 !== s.形態 && tOfStr(x.更新) > tOfStr(s.設定更新)))) { s.形態 = x.形態; if (s.前回形態 && s.前回形態 !== x.形態) s.前回形態 = x.形態; s.設定更新 = x.更新 || s.設定更新; s.形態の元 = "工事日報の現場設定" + (x.だれ ? "・" + String(x.だれ).replace(/[\s　]/g, "") : "") + (x.更新 ? " " + String(x.更新).slice(0, 10) : ""); ch = true; } }); if (ch) { save(); renderPickers(); } }
+  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (x && x.形態 && (s.形態 !== x.形態 || s.前回形態 !== x.形態 || !s.形態共有)) { s.形態 = x.形態; s.前回形態 = x.形態; s.形態共有 = true; s.設定更新 = x.更新 || s.設定更新; s.形態の元 = "工事日報の現場設定" + (x.だれ ? "・" + String(x.だれ).replace(/[\s　]/g, "") : "") + (x.更新 ? " " + String(x.更新).slice(0, 10) : ""); ch = true; } }); if (ch) { save(); renderPickers(); } }
   catch (e) { console.warn("現場設定を読めませんでした", e); }
   finally { FORM_READY = true; refreshSheet(); askForm(); }
 }

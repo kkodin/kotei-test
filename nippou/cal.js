@@ -200,7 +200,7 @@ function bindCal(evs) {
   const box = $("all");
   box.onclick = e => {
     const ev = e.target.closest("[data-ev]");
-    if (ev) { const [who, k, id] = ev.dataset.ev.split("|"), x = evs.get(k).find(y => nk(y.who) === nk(who) && y.r.id === id); if (x) openReport(x); return; }
+    if (ev) { const [who, k, id] = ev.dataset.ev.split("|"), x = evs.get(k).find(y => nk(y.who) === nk(who) && y.r.id === id); if (x) openReport(x, ev.dataset.from); return; }
     const wh = e.target.closest("[data-who]");   // 人の名前 → その人の日報の一覧（同じ窓）
     if (wh) { S.who = wh.dataset.who; S.view = "list"; return render(); }
     const pv = e.target.closest("[data-plan]");
@@ -532,18 +532,22 @@ const reportUrl = (r, k) => r.関連現場 && r.関連現場.名前 ? detailUrl(
 // 2026-11-21 ユーザー（続き）：スケジュール詳細でなく、日報の書式で押した所の中身を開きたい。
 // → 書式の無い行は、詳細日報へ その行の人（記入者）と行の id を渡す（&w=&rid=）。詳細日報は、その日の日報がまだ無ければ
 //   記入者をその人にして、その行の中身（人・同じ現場の人・作業内容・機械）を用紙に入れる（14_常用日報 link.js linkPull）
-async function openReport(x) {
+// from：カレンダーで押した人の行（その人の日報を見ている＝詳細日報の日付タブはその人の日報へ。&p=）
+// 配置表から取り込んだ行（取込 haichi:）は、だれが書いたか分からないので記入者を渡さない（&imp=1）。詳細日報が配置表のその現場の担当者を記入者にする（2026-11-21 ユーザー）
+async function openReport(x, from) {
   if (!reportSite(x.r)) return showEv(x);
-  if (x.r.書式 || x.r.詳細) { location.href = reportUrl(x.r, x.k); return; }
-  location.href = reportUrl(x.r, x.k) + `&w=${encodeURIComponent(x.who || "")}&rid=${encodeURIComponent(x.r.id || "")}` + (x.r.行先 === "本社" ? "&hon=1" : "");   // 本社（現場名）の行：詳細日報で（本社）✓
+  const p = `&p=${encodeURIComponent(from || x.who || "")}`;
+  if (x.r.書式 || x.r.詳細) { location.href = reportUrl(x.r, x.k) + p; return; }
+  const imp = /^haichi:/.test(String(x.r.取込 || ""));
+  location.href = reportUrl(x.r, x.k) + `&w=${imp ? "" : encodeURIComponent(x.who || "")}&rid=${encodeURIComponent(x.r.id || "")}` + (imp ? "&imp=1" : "") + (x.r.行先 === "本社" ? "&hon=1" : "") + p;   // 本社（現場名）の行：詳細日報で（本社）✓
 }
 async function openDay(k, who) {
   const xs = evsOn(await docsFor([k]), k).filter(x => membersOf(x).some(v => nk(v) === nk(who)));
   const site = xs.filter(x => reportSite(x.r));
-  if (site.length === 1) return openReport(site[0]);
+  if (site.length === 1) return openReport(site[0], who);
   if (site.length > 1) {   // 1日に2つ以上の現場：どれを開くか
     dlg(`<div class="dh"><h2>${esc(who)}　${fmtDay(k)} の日報</h2><button type="button" data-close aria-label="閉じる">×</button></div><div class="apps">${site.map((x, i) => `<button type="button" data-i="${i}"><b>${esc(titleOf(x.r))}</b><small>${esc((x.r.始め || "") + (x.r.終わり ? "〜" + x.r.終わり : ""))}　記入：${esc(x.who)}</small></button>`).join("")}</div>`);
-    $("dlgBody").querySelector(".apps").onclick = e => { const b = e.target.closest("[data-i]"); if (b) { closeDlg(); openReport(site[+b.dataset.i]); } };
+    $("dlgBody").querySelector(".apps").onclick = e => { const b = e.target.closest("[data-i]"); if (b) { closeDlg(); openReport(site[+b.dataset.i], who); } };
     return;
   }
   if (nk(who) === nk(S.me.name)) {   // 自分の日で現場の日報がまだ無い：PC・タブレットは用紙（現場名を上の欄に入れる）、スマホはカード

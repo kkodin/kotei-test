@@ -149,16 +149,21 @@ async function writerSync() {
 }
 // WS.seen："現場id|日" → その日報が入っている記入者のファイル名（2つ以上なら重複）。WS.cache：ファイル名 → 中身
 // 記入者が空の日：配置表のその日・この現場の「担当」（名字）から、名簿の人を1人に決める（2026-11-16 ユーザー：配置表の担当の欄を参照）
-async function fillFromHaichi(s, k, d) {
-  let H = null; try { H = await haichiDay(k); } catch (e) { return false; }
-  if (!H || !H.data) return false;
-  const rows = bestOf((H.data.現場 || []).filter(r => r && r.現場名), r => siteScore(s, r.現場名, r.現場コード));
+// 配置表のその日・この現場の担当者（名字 → 名簿の人。1人に決まるときだけ）。現場の欄と外注の欄（2026-11-21：外注の欄の担当も）
+async function haichiTanto(s, k) {
+  let H = null; try { H = await haichiDay(k); } catch (e) { return null; }
+  if (!H || !H.data) return null;
+  const rows = bestOf([...(H.data.現場 || []), ...(H.data.外注 || [])].filter(r => r && r.現場名), r => siteScore(s, r.現場名, r.現場コード));
   const t = [...new Set(rows.map(r => String(r.担当 || "").replace(/\s/g, "")).filter(Boolean))];
-  if (t.length !== 1) return false;
-  const all = [...new Set([...MS.社員, ...MS.従業員, ...s.作業員.map(w => w.名前)].map(masterName))];
+  if (t.length !== 1) return null;
+  const all = [...new Set([...MS.社員, ...MS.従業員, ...(s.作業員 || []).map(w => w.名前)].map(masterName))];
   const hit = all.filter(n => nk(n).startsWith(nk(t[0])));
-  if (hit.length !== 1) return false;
-  d.担当者 = hit[0]; d.担当者の元 = `配置表の担当（${H.版}）`; d.更新 = now();
+  return hit.length === 1 ? { name: hit[0], 版: H.版 } : null;
+}
+async function fillFromHaichi(s, k, d) {
+  const h = await haichiTanto(s, k); if (!h) return false;
+  const hit = [h.name];
+  d.担当者 = hit[0]; d.担当者の元 = `配置表の担当（${h.版}）`; d.更新 = now();
   WS.filled.push(`${siteLabel(s)} ${k} → ${hit[0]}`);
   return true;
 }
@@ -194,8 +199,21 @@ const otherWriter = () => { const d = day(), s = site(); return !!(s && d && d.�
 // 新しく書く日は、自分が記入者
 const wEnsure0 = ensureDay;
 // 工事日報で押した行から開いたとき（link.js LK.entry）は、その行の人が記入者（2026-11-21 ユーザー）
-const entryWriter = () => { const E = typeof LK !== "undefined" && LK.entry; return E && E.w && E.site === UI.site && E.k === UI.day ? masterName(E.w) || E.w : ""; };
-ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d.担当者) d.担当者 = entryWriter() || myName(); return d; };
+const entryNow = () => { const E = typeof LK !== "undefined" && LK.entry; return E && E.site === UI.site && E.k === UI.day ? E : null; };
+// 配置表から取り込んだ行（imp）は、配置表のその現場の担当者（entryTanto が調べる。分からなければ空＝あとで共有するときにもう一度配置表の担当から）
+const entryWriter = () => { const E = entryNow(); if (!E) return ""; if (E.imp) return E.tanto || ""; return E.w ? masterName(E.w) || E.w : ""; };
+// 用紙の記入者欄に出すもの（日報がまだ無い日）。null＝工事日報の行から開いていない
+const entryWriterShown = () => { const E = entryNow(); if (!E || (!E.w && !E.imp)) return null; return entryWriter(); };
+async function entryTanto() {
+  const E = LK.entry; if (!E || !E.imp) return;
+  for (let i = 0; i < 10 && !DB.現場.some(v => v.id === E.site); i++) await new Promise(r => setTimeout(r, 1000));
+  const s = DB.現場.find(v => v.id === E.site); if (!s) return;
+  const h = await haichiTanto(s, E.k); if (LK.entry !== E) return;
+  E.tanto = h ? h.name : ""; E.tantoDone = true;
+  const d = s.日[E.k]; if (d && !d.担当者 && E.tanto) { d.担当者 = E.tanto; d.担当者の元 = `配置表の担当（${h.版}）`; d.更新 = now(); save(); }
+  if (UI.site === E.site && UI.day === E.k) refreshSheet();
+}
+ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d.担当者) { const E = entryNow(); d.担当者 = E && E.imp ? entryWriter() : entryWriter() || myName(); } return d; };   // 配置表から取り込んだ行は自分を記入者にしない
 
 /* ---------- 記入者を押す → その人の日報を見る（2026-11-17 ユーザー：人を選んでもその人の日報に行かなかった） ----------
    1) この日に、その人が記入者の日報 → 2) この日に、その人が作業員・外注に入っている日報 → 3) この日より前で、いちばん近い日のその人の日報。
@@ -203,17 +221,50 @@ ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d
 $("hTan").onclick = () => detailOpenPeople("view");
 /* 下の日付タブ（2026-11-21 ユーザー：佐相さんの日報を見ているとき、別の日を押したら佐相さんの日報へ）
    ほかの人の日報を見ているときは、その人がその日に記入者（なければ作業員）の日報へ。無ければこの現場のその日を開いて知らせる */
-let TAB_WHO = "";
-function tabDay(d) {
-  const who = (day() && String(day().担当者 || "").trim()) || TAB_WHO || entryWriter();
-  if (UI.detailView !== "writer" && who && myName() && nk(who) !== nk(myName())) {
-    TAB_WHO = who;
-    const rank = x => (x.s.id === UI.site ? 0 : 2) + (x.w ? 0 : 1), hit = wPersonDays(who).filter(x => x.k === d).sort((a, b) => rank(a) - rank(b))[0];
-    if (hit) { if (hit.s.id === UI.site) setDay(d); else { UI.detailView = "site"; detailSelectSite(hit.s.id, d); } return; }
-    setDay(d); toast(`${who} さんの ${jpDate(d)} の日報はありません（この現場の ${jpDate(d)} を開きました）`, 5000); return;
+// VIEW_PERSON：だれの日報を見ているか（工事日報のカレンダーで押した人 &p=・記入者の欄で選んだ人）。日付タブはこの人の日報へ（2026-11-21 ユーザー：吉田さんの日報を見ているのだから吉田さんが参加している現場）
+let VIEW_PERSON = (typeof OPEN_Q !== "undefined" && OPEN_Q.get("p")) || "";
+let TAB_WHO = "", TAB_EMPTY = null;   // TAB_EMPTY：{ site, k, text } その人のその日の日報が無い → 用紙を出さずに知らせる（2026-11-21 ユーザー：日曜日にも国府支管工事がある）
+// 工事日報の行に出てくる人（記入者・参加者・予定の人・同じ現場の人）
+const rowPeople = (doc, r) => [...(r.本人 !== false && doc.名前 ? [doc.名前] : []), ...(r.人 || []), ...((r.予定 || {}).人 || []), ...(r.同行 || [])];
+async function tabDay(d) {
+  const who = VIEW_PERSON || (day() && String(day().担当者 || "").trim()) || TAB_WHO || entryWriter();
+  TAB_EMPTY = null;
+  if (UI.detailView === "writer" || !who || !myName() || nk(who) === nk(myName())) { TAB_WHO = ""; setDay(d); return; }
+  TAB_WHO = who;
+  // 1) 日報の書式で書いた日報（記入者 → 作業員の順。今の現場を先に）
+  const rank = x => (x.s.id === UI.site ? 0 : 2) + (x.w ? 0 : 1), hit = wPersonDays(who).filter(x => x.k === d).sort((a, b) => rank(a) - rank(b))[0];
+  if (hit) { if (hit.s.id === UI.site) setDay(d); else { UI.detailView = "site"; detailSelectSite(hit.s.id, d); } return; }
+  // 2) 工事日報の行（配置表の取り込みなど。まだ日報の書式で書いていない）→ その現場を開いて、上に工事日報の内容（見るだけ）
+  let docs = []; try { docs = await nippouDocs(d.slice(0, 7)); } catch (e) { }
+  const rows = []; docs.forEach(doc => ((((doc.日 || {})[d] || {}).行) || []).forEach(r => { if (rowPeople(doc, r).some(v => nk(v) === nk(who))) rows.push({ doc, r }); }));
+  const siteFor = r => { const nm = r.関連現場 && r.関連現場.名前 ? r.関連現場.名前 : r.行先, cd = r.関連現場 && r.関連現場.名前 ? r.関連現場.コード : r.コード;
+    if (!nm || (/^(本社|休み|機材センター)$/.test(nm) && !(r.関連現場 && r.関連現場.名前))) return null;
+    return DB.現場.find(v => cd && String(v.コード) === String(cd)) || bestOf(DB.現場, v => siteScore(v, nm))[0] || null; };
+  const pick = rows.map(x => ({ ...x, s: siteFor(x.r) })).filter(x => x.s).sort((a, b) => (a.s.id === UI.site ? 0 : 1) - (b.s.id === UI.site ? 0 : 1))[0];
+  if (pick) {
+    const imp = /^haichi:/.test(String(pick.r.取込 || ""));
+    LK.entry = { site: pick.s.id, k: d, w: imp ? "" : pick.doc.名前 || who, rid: pick.r.id || "", hon: pick.r.行先 === "本社", imp };
+    if (imp) entryTanto();
+    // ほかの人のまだ書いていない日は見るだけで（編集中のまま移ると、その人の日報を勝手に作ってしまうので）。書くときは「編集する」
+    if (!RO) { VIEW_FIRST = true; if (LOCK.mine && LOCK.site) releaseLock(LOCK.site); LOCK.mine = false; setRO({ self: true }); }
+    if (pick.s.id === UI.site) setDay(d); else { UI.detailView = "site"; detailSelectSite(pick.s.id, d); }
+    return;
   }
-  TAB_WHO = ""; setDay(d);
+  // 3) どちらにも無い：用紙は出さず「ありません」（本社・休みなら工事日報の行先を添える）
+  const where = [...new Set(rows.map(x => x.r.行先).filter(Boolean))].join("・");
+  TAB_EMPTY = { site: UI.site, k: d, text: `${who} さんの ${jpDate(d)}（${WD[wd(d)]}）の日報はありません${where ? `（工事日報では「${where}」）` : ""}。下の日付で別の日を選ぶか、記入者の名前・現場名から選んでください。` };
+  setDay(d);
 }
+// 日報が無い日（TAB_EMPTY）は用紙を隠して知らせる
+const browse0 = detailRenderBrowse;
+detailRenderBrowse = function () {
+  browse0();
+  const E = TAB_EMPTY, on = !!(E && E.k === UI.day && E.site === UI.site && !day());
+  if (!on) { if (E && E.k !== UI.day) TAB_EMPTY = null; return; }
+  $("sheet").hidden = true; document.querySelector(".sheet-actions").hidden = true;
+  const fx = document.querySelector("#pSheet .fbar"); if (fx) fx.hidden = true;
+  $("detailEmpty").hidden = false; $("detailEmptyText").textContent = E.text;
+};
 $("hTan").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenPeople("view"); } };
 function wPersonDays(name) {
   const n = nk(name), out = [];
@@ -232,6 +283,7 @@ detailPickPerson = function (name) {
     $("hTan").value = person.name; $("hTan").dispatchEvent(new Event("change")); closeDlg($("dPeople")); return;
   }
   closeDlg($("dPeople"));
+  VIEW_PERSON = person.name;   // この人の日報を見る（日付タブもこの人の日報へ）
   const k = UI.day, pref = detailPeopleState.onlySite ? detailPeopleState.site : "", all = wPersonDays(person.name);
   const rank = x => (x.s.id === pref ? 0 : 2) + (x.w ? 0 : 1);
   const today = all.filter(x => x.k === k).sort((a, b) => rank(a) - rank(b));
