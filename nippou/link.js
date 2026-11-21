@@ -65,7 +65,8 @@ async function entryJump() {
   else if (!(rows || []).length) {
     try { const H = DIFF.H; H.from = k; H.to = k; await haiLoad(H); const x = haiDay(H, k);
       const g = x && (x.d.現場 || []).find(g => (g.作業員 || []).some(w => nk(w.氏名) === nk(S.me.name)) || (g.担当が行った && nk(tantoName(g.担当)) === nk(S.me.name)));
-      if (g) pl = plOf(g.現場名, ""); } catch (e) { }
+      const b = !g && x && haiGai(x.d).find(b => nk(tantoName(b.担当)) === nk(S.me.name));
+      if (g || b) pl = plOf((g || b).現場名, ""); } catch (e) { }
   }
   if (!pl || formOf(pl.label, pl.code) !== "常用") return false;
   location.replace(detailUrl(pl.label, pl.code, k));

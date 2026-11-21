@@ -42,6 +42,8 @@ async function diffHai(map, m, ctx) {
       (g.作業員 || []).forEach(w => add(w.氏名, pl));
       if (g.担当が行った && tantoName(g.担当)) add(tantoName(g.担当), pl);
     });
+    // 外注の欄の担当（黄色＝担当が行った）も、その現場にいたことにする（2026-11-21）
+    haiGai(d).forEach(b => { const t = tantoName(b.担当); if (t) add(t, plOf(b.現場名, "", haiNight(b.昼夜), b.作業内容)); });
     (d.本社 || []).forEach(h => { const t = haiHonsha(h.記載); add(h.氏名, t.off ? plOf(REST, "", false, t.work) : plOf("本社", "", false, t.work || "")); });
     const kc = d.機材センター || {}; (kc.人 || []).forEach(w => add(w.氏名, plOf("機材センター", "", false, String(kc.作業内容 || ""))));
     (Array.isArray(d.休み) ? d.休み : []).forEach(w => { const n = typeof w === "string" ? w : w && w.氏名; if (n) add(n, plOf(REST, "", false, "")); });

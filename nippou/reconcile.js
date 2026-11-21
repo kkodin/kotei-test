@@ -90,6 +90,9 @@ function rcAdjustHaichi(d, e, target) {
       if (row.担当が行った && nk(tantoName(row.担当)) === nk(e.name)) row.担当が行った = false;
     }
   });
+  // 外注の欄の担当（黄色）：選んだ現場でなければ黄色を外す（2026-11-21）
+  const gaiMine = row => row && row.担当が行った && nk(tantoName(row.担当)) === nk(e.name);
+  (d.外注 || []).forEach(row => { if (gaiMine(row) && !target.has(plOf(row.現場名, row.現場コード).key)) row.担当が行った = false; });
   d.本社 = (d.本社 || []).filter(w => !match(w));
   if (d.機材センター) d.機材センター.人 = (d.機材センター.人 || []).filter(w => !match(w));
   d.休み = (Array.isArray(d.休み) ? d.休み : []).filter(w => !match(w));
@@ -97,6 +100,7 @@ function rcAdjustHaichi(d, e, target) {
     if (pl.label === REST) { (d.休み ||= []).push({ 氏名: e.name }); return; }
     if (isOffice(pl.label)) { (d.本社 ||= []).push({ 氏名: e.name, 記載: "本社内勤" }); return; }
     if (pl.label === "機材センター") { ((d.機材センター ||= {}).人 ||= []).push({ 氏名: e.name }); return; }
+    if ((d.外注 || []).some(row => gaiMine(row) && plOf(row.現場名, row.現場コード).key === pl.key)) return;   // 外注の欄の担当として載っている
     const rows = (d.現場 ||= []);
     let row = rows.find(r => plOf(r.現場名, r.現場コード).key === pl.key);
     if (!row) { row = { 現場名: pl.label, 現場コード: pl.code, 区分: pl.night ? "夜勤" : "昼勤", 作業内容: "", 作業員: [] }; rows.push(row); }
