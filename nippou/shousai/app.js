@@ -133,7 +133,7 @@ function ensureDay() {
 // 中身のある日か（空の日は保存しない）
 // 2026-11-18 ユーザー：現場名と記入者が入っていれば、ほかに何も書いていなくても保存する（記入者・（本社）✓ も中身に数える）
 function hasData(d) {
-  if (!d) return false;
+  if (!d || d.仮) return false;   // 仮：見るだけで、工事日報の行から用紙に入れて見せているだけの日（保存しない・集計しない。link.js linkPreview）
   if (d.担当者 || d.本社 || d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
   return [...d.上, ...d.下, ...(d.外注 || []), ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
 }
@@ -1938,6 +1938,8 @@ function canEdit() {
 }
 function setRO(v) {
   const was = RO; RO = v;
+  // 見るだけ → 編集：見せていた仮の日報（工事日報の行の中身）を、そのまま正式な日報にする（2026-11-21）
+  if (was && !RO) { const d0 = day(); if (d0 && d0.仮) { delete d0.仮; d0.更新 = now(); save(); } }
   if (!!was !== !!RO) setTimeout(() => { refreshSheet(); }, 0);   // 見るだけ ⇔ 編集 が替わったら描き直す（編集にしたら工事日報の行を入れる・見るだけの知らせを出す。2026-11-21）
   document.body.classList.toggle("ro", !!RO);
   ["hWx", "hTmp", "hBikou"].forEach(id => { if ($(id)) $(id).disabled = !!RO; });   // 記入者の欄（hTan）は閲覧のみでも押せる：押すと人を選んでその人の日報に切り替える（2026-11-21 ユーザー）
@@ -1962,8 +1964,8 @@ async function takeLock(force, fromSelf) {
   const id = UI.site;
   if (LOCK.site && LOCK.site !== id && LOCK.mine) releaseLock(LOCK.site);
   LOCK.site = id; LOCK.mine = false; LOCK.eTag = null;
+  if (id && VIEW_FIRST) { setRO({ self: true }); return; }   // 工事日報から開いたときは見るだけ（札を取らない）。上の「編集する」で直す
   if (!id || !signedIn()) { setRO(null); return; }
-  if (VIEW_FIRST) { setRO({ self: true }); return; }   // 工事日報から開いたときは見るだけ（札を取らない）。上の「編集する」で直す
   if (!ME.名前) { askName(); return; }
   if (LOCK.busy) return; LOCK.busy = true;
   try {

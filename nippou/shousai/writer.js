@@ -188,7 +188,7 @@ for (const f of ["exportXlsx", "printDays"]) {
   window[f] = function (...a) { const w = sumWarnings(); if (w.length && !confirm("集計を使う前に確かめてください：\n・" + w.join("\n・") + "\n\nこのまま出しますか？")) return; return f0.apply(this, a); };
 }
 // 現場ごとのファイルには、記入者のファイルへ移した日を書かない（名簿・単価・決まりは残る）
-siteForShare = s => { const days = {}; Object.entries(s.日).forEach(([k, d]) => { if (!(k >= MOVE_FROM && WS.done[wKey(s.id, k)] && d.担当者)) days[k] = d; }); return { ...s, 日: days }; };
+siteForShare = s => { const days = {}; Object.entries(s.日).forEach(([k, d]) => { if (d && d.仮) return; if (!(k >= MOVE_FROM && WS.done[wKey(s.id, k)] && d.担当者)) days[k] = d; }); return { ...s, 日: days }; };
 const wSync0 = sync;
 sync = async function () { await wSync0(); await writerSync(); if (UI.tab === "sheet") refreshSheet(); if (UI.tab === "sum") renderSum(); };
 

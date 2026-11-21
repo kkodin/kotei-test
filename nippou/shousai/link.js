@@ -279,16 +279,16 @@ function linkEntryNote() {
   let el = $("entryNote");
   if (!el) { el = document.createElement("div"); el.id = "entryNote"; el.className = "wrbar"; $("roBar").after(el); }
   const E = LK.entry, s = site();
-  if (!RO || !E || !E.rid || !s || E.site !== s.id || E.k !== UI.day || day()) { el.hidden = true; return; }
+  if (!RO || !E || !E.rid || !s || E.site !== s.id || E.k !== UI.day || (day() && !day().仮)) { el.hidden = true; return; }
   el.hidden = false;
   nippouDocs(E.k.slice(0, 7)).then(docs => {
-    if (site() !== s || UI.day !== E.k || day()) { el.hidden = true; return; }
+    if (site() !== s || UI.day !== E.k || (day() && !day().仮)) { el.hidden = true; return; }
     let r = null, who = "";
     docs.forEach(doc => ((((doc.日 || {})[E.k] || {}).行) || []).forEach(y => { if (y.id === E.rid) { r = y; who = doc.名前 || ""; } }));
     if (!r) { el.hidden = true; return; }
     const L = (r.作業行 || []).map(l => [l.予定 ? "予定：" + l.予定 : "", l.報告 ? "報告：" + l.報告 : ""].filter(Boolean).join("　")).filter(Boolean);
     const ppl = [...new Set([...(r.本人 !== false && who ? [who] : []), ...(r.人 || []), ...(r.同行 || [])])];
-    el.innerHTML = `📝 この日は、まだ日報の書式で書かれていません。工事日報の内容：${esc(L.join(" ／ ") || "（作業内容なし）")}${ppl.length ? `　人：${esc(ppl.join("、"))}` : ""}<br><small>書くときは上の「編集する」を押してください（この内容が用紙に入ります）</small>`;
+    el.innerHTML = `📝 この日は、まだ日報の書式で書かれていません。工事日報の内容：${esc(L.join(" ／ ") || "（作業内容なし）")}${ppl.length ? `　人：${esc(ppl.join("、"))}` : ""}<br><small>下の用紙は、この内容を入れて見せているだけです（保存していません）。書くときは上の「編集する」を押してください</small>`;
   }).catch(() => { el.hidden = true; });
 }
 /* ---------- 閲覧のみで現場名を押す：この現場のひと月分を縦に（2026-11-21 ユーザー：日・曜日・記入者・参加者・作業内容。記入者が違ってもこの現場だけ） ----------
@@ -316,9 +316,37 @@ function siteMonthOpen(m) {
     closeDlg($("dEdit")); UI.detailView = "site"; detailSelectSite(s.id, tr.dataset.smk);
   };
 }
+/* ---------- 見るだけのとき、工事日報の行の中身を用紙に入れて見せる（2026-11-21 ユーザー：日報一覧の作業内容を作業日報に反映。
+   今は皆まだ日報を書いていないので、配置表から取り込んだ行の 現場・作業内容・人 を見せる）。
+   日.仮＝true：保存しない・集計しない（app.js hasData）・共有しない（writer.js siteForShare）。「編集する」でそのまま正式な日報になる（app.js setRO） ---------- */
+let PREV_BUSY = "";
+async function linkPreview(s, k) {
+  const E = LK.entry; if (!RO || !s || !E || !E.rid || E.site !== s.id || E.k !== k) return;
+  const cur = s.日[k]; if (cur && !cur.仮) return;
+  const key = s.id + "|" + k + "|" + E.rid; if (PREV_BUSY === key) return; PREV_BUSY = key;
+  try {
+    const docs = await nippouDocs(k.slice(0, 7)); if (site() !== s || UI.day !== k || !RO) return;
+    let r = null, doc = null;
+    docs.forEach(x => ((((x.日 || {})[k] || {}).行) || []).forEach(y => { if (y.id === E.rid) { r = y; doc = x; } }));
+    if (!r) return;
+    const h = parseInt(String(r.始め || "").split(":")[0], 10), sh = r.区分 === "夜" || (!r.区分 && (h >= 17 || h < 5)) ? "夜" : "昼";
+    const ppl = [...new Set(rowPeople(doc, r).map(n => masterName(n) || String(n).trim()).filter(Boolean))];
+    const L = (r.作業行 || []).filter(l => l && (l.予定 || l.報告));
+    const mach = [...new Set([...(r.機械 || []), ...((r.予定 || {}).機械 || [])])];
+    const row = n => { const a = Array(15).fill(""); a[0] = n; a[1] = r.始め || ""; a[2] = r.終わり || ""; a[14] = sh; return a; };
+    const d = { 仮: true, 天気: "", 気温: "", 担当者: entryWriter() || "", 上: L.map(l => ["", l.予定 || "", "", "", l.報告 || ""]), 下: ppl.map(row), 外注: [], 車: [], 備考: "", サイン: "", サイン日時: "", 人員手: false, 更新: "", 形態: nextForm(s) };
+    mach.forEach((m, i) => { const a = d.下[i] || (d.下[i] = Array(15).fill("")); a[5] = m; });
+    if (E.hon) d.本社 = true;
+    s.日[k] = d; refreshSheet();
+  } catch (e) { console.warn("工事日報の行を見せられませんでした", e); }
+  finally { PREV_BUSY = ""; }
+}
+// 見せていた仮の日報は、ほかの日・現場へ移ったら消す（残さない）
+function linkPreviewClean() { const s0 = site(); for (const s of DB.現場) for (const k of Object.keys(s.日 || {})) { const d = s.日[k]; if (d && d.仮 && !(s === s0 && k === UI.day && RO)) delete s.日[k]; } }
 /* ---------- 画面を描くたびに ---------- */
 function linkPaint(force) {
   const s = site(), k = UI.day; if (!$("kikaiPlan")) return;
+  linkPreviewClean(); linkPreview(s, k);
   linkPaintKikai(); linkEntryNote();
   const tk = ++LK.chk; if (s) linkCheck(s, k, tk).catch(e => console.warn(e)); else $("chkBar").innerHTML = "";
   clearTimeout(LK.timer);
