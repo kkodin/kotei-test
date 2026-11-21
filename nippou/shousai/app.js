@@ -1176,7 +1176,38 @@ $("fRes").addEventListener("click", e => {
 // 選択した日からコピー（2026-10-31 ユーザー：カレンダーで日報の入っている日を選び、中身を見せてからコピーしてよいか聞く）
 $("bCopyPrev").onclick = () => dayCopyOpen();
 // 作業日報の題の左「作業内容をコピー」（2026-11-17 ユーザー）：ほかの日から写す窓
-document.addEventListener("click", e => { if (!e.target.closest("#bCopyWork")) return; if (!site()) { toast("先に区分と現場名を選んでください", 4000); if (formMissing()) blinkForm(); return; } if (!canEdit()) return; dayCopyOpen(); });
+// 2026-11-21 ユーザー：区分・現場名を先に選ばなくてもコピーできるように → 現場が無いときは、ほかの日の日報（どの現場でも）から選ぶ。
+// 選んだ日報の現場を、この日の現場にしてからコピーの確認（copyPreview）へ
+document.addEventListener("click", e => { if (!e.target.closest("#bCopyWork")) return; if (!canEdit()) return; if (!site()) return copyAnyOpen(); dayCopyOpen(); });
+function copyAnyOpen() {
+  detailCommit();
+  const me = nk(myName()), all = [];
+  DB.現場.forEach(s => Object.entries(s.日 || {}).forEach(([k, d]) => {
+    if (k === UI.day || !hasData(d) || !(d.上 || []).some(r => r && r[1]) && !rowsOf(d).some(r => r && r[0])) return;
+    all.push({ s, k, d, mine: !!me && (nk(d.担当者 || "") === me || rowsOf(d).some(r => r && r[0] && nk(r[0]) === me)) });
+  }));
+  if (!all.length) { toast("コピー元の日報がありません"); return; }
+  all.sort((a, b) => (b.mine - a.mine) || (a.k < b.k ? 1 : a.k > b.k ? -1 : 0));
+  const draw = q => {
+    const L = all.filter(x => !q || kKey(siteLabel(x.s) + (x.d.担当者 || "")).includes(kKey(q))).slice(0, 60);
+    $("copyAnyList").innerHTML = L.length ? L.map(x => { const w = (x.d.上 || []).filter(r => r && r[1]).map(r => r[1]).join("、");
+      return `<button type="button" class="sub cpany" data-ca="${esc(x.s.id)}|${x.k}"><b>${jpDate(x.k)}（${WD[wd(x.k)]}）　${esc(siteLabel(x.s))}</b><small>記入：${esc(x.d.担当者 || "―")}${x.mine ? "（自分）" : ""}${w ? "　" + esc(w.length > 40 ? w.slice(0, 40) + "…" : w) : ""}</small></button>`; }).join("") : `<p class="note">当てはまる日報がありません</p>`;
+  };
+  $("eTtl").textContent = `どの日報から ${jpDate(UI.day)} にコピーしますか？`;
+  $("eBody").innerHTML = `<p class="note">現場名をまだ選んでいないので、ほかの日の日報から選びます（自分が書いた・入っていた日報が先）。選んだ日報の現場が、この日の現場になります。</p>
+    <input type="search" id="copyAnyQ" placeholder="現場名・記入者で絞り込み" autocomplete="off" style="width:100%;margin:4px 0 8px">
+    <div id="copyAnyList" class="cpanylist"></div><div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button></div>`;
+  openDlg($("dEdit"));
+  $("eBody").onkeydown = null;
+  draw("");
+  $("copyAnyQ").oninput = () => draw($("copyAnyQ").value.trim());
+  $("copyAnyList").onclick = e => {
+    const b = e.target.closest("[data-ca]"); if (!b) return;
+    const [sid, k] = b.dataset.ca.split("|"), to = UI.day;
+    closeDlg($("dEdit")); UI.detailView = "site"; detailSelectSite(sid, to);
+    if (site() && site().id === sid && hasData(site().日[k])) copyPreview(k);
+  };
+}
 // 写すもの：作業予定（完了報告は写さない）・作業員と使用機材・材料の行・ページの数。天気・気温・記入者・高速・燃料は写さない
 function copyPreview(x) {
   const s = site(), p = s.日[x], cur = day(), T = (t, rows) => rows.length ? `<h4 class="mh">${t}</h4><table class="sm cpv">${rows.join("")}</table>` : "";

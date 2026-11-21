@@ -528,14 +528,13 @@ const reportUrl = (r, k) => r.書式 && r.関連現場 ? detailUrl(r.関連現�
 // 2026-11-21 ユーザー：日報が入っている所を押すと、自分が記入者の空の日報が開いてしまう。
 // 配置表・クロジカから取り込んだ行など、日報の書式で書いていない行は、詳細日報にまだ日報が無い（開くと自分が記入者の新しい日報になる）。
 // その現場・その日の日報（書式のある行・前の詳細日報）がだれかにあるときだけ詳細日報を開き、無ければスケジュール詳細で中身を見せる
-const formSiteKey = r => r.書式 && r.関連現場 ? plOf(r.関連現場.名前, r.関連現場.コード).key : plOf(r.行先, r.コード).key;
+// 2026-11-21 ユーザー（続き）：スケジュール詳細でなく、日報の書式で押した所の中身を開きたい。
+// → 書式の無い行は、詳細日報へ その行の人（記入者）と行の id を渡す（&w=&rid=）。詳細日報は、その日の日報がまだ無ければ
+//   記入者をその人にして、その行の中身（人・同じ現場の人・作業内容・機械）を用紙に入れる（14_常用日報 link.js linkPull）
 async function openReport(x) {
   if (!reportSite(x.r)) return showEv(x);
   if (x.r.書式 || x.r.詳細) { location.href = reportUrl(x.r, x.k); return; }
-  let has = false;
-  try { const key = formSiteKey(x.r); has = evsOn(await docsFor([x.k]), x.k).some(y => (y.r.書式 || y.r.詳細) && formSiteKey(y.r) === key); } catch (e) { }
-  if (has) { location.href = reportUrl(x.r, x.k); return; }
-  showEv({ ...x, noForm: true });
+  location.href = reportUrl(x.r, x.k) + `&w=${encodeURIComponent(x.who || "")}&rid=${encodeURIComponent(x.r.id || "")}`;
 }
 async function openDay(k, who) {
   const xs = evsOn(await docsFor([k]), k).filter(x => membersOf(x).some(v => nk(v) === nk(who)));

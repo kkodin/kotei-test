@@ -193,7 +193,9 @@ sync = async function () { await wSync0(); await writerSync(); if (UI.tab === "s
 const otherWriter = () => { const d = day(), s = site(); return !!(s && d && d.担当者 && myName() && nk(d.担当者) !== nk(myName())); };
 // 新しく書く日は、自分が記入者
 const wEnsure0 = ensureDay;
-ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d.担当者) d.担当者 = myName(); return d; };
+// 工事日報で押した行から開いたとき（link.js LK.entry）は、その行の人が記入者（2026-11-21 ユーザー）
+const entryWriter = () => { const E = typeof LK !== "undefined" && LK.entry; return E && E.w && E.site === UI.site && E.k === UI.day ? masterName(E.w) || E.w : ""; };
+ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d.担当者) d.担当者 = entryWriter() || myName(); return d; };
 
 /* ---------- 記入者を押す → その人の日報を見る（2026-11-17 ユーザー：人を選んでもその人の日報に行かなかった） ----------
    1) この日に、その人が記入者の日報 → 2) この日に、その人が作業員・外注に入っている日報 → 3) この日より前で、いちばん近い日のその人の日報。

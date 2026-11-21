@@ -115,10 +115,13 @@ async function linkPull(s, k) {
   const docs = await nippouDocs(k.slice(0, 7));
   if (site() !== s || UI.day !== k || !canEdit() || busyEditing()) return;
   const got = [];
+  // 工事日報で押した行：その日の日報がまだ無いときだけ、取り込んだ行（配置表など）でも入れる。同じ現場の人（行.同行）も作業員に
+  const E = LK.entry && LK.entry.site === s.id && LK.entry.k === k && LK.entry.rid && !day() ? LK.entry : null;
   docs.forEach(doc => (((doc.日 || {})[k] || {}).行 || []).forEach(r => {
-    if (!r.行先 || !sameSite(s, r) || /^(jouyou|haichi):/.test(String(r.取込 || "")) || r.詳細 || r.書式) return;   // 書式のある行は、この用紙で書いた日報そのもの
+    const picked = E && r.id === E.rid;
+    if (!r.行先 || !sameSite(s, r) || r.詳細 || r.書式 || (!picked && /^(jouyou|haichi):/.test(String(r.取込 || "")))) return;   // 書式のある行は、この用紙で書いた日報そのもの
     const h = parseInt(String(r.始め || "").split(":")[0], 10), sh = r.区分 === "夜" || (!r.区分 && (h >= 17 || h < 5)) ? "夜" : "昼";
-    const rep = r.人 || [], who = [...(r.本人 !== false && doc.名前 ? [doc.名前] : []), ...(rep.length ? rep : ((r.予定 || {}).人 || []))];
+    const rep = r.人 || [], who = [...(r.本人 !== false && doc.名前 ? [doc.名前] : []), ...(rep.length ? rep : ((r.予定 || {}).人 || [])), ...(picked ? r.同行 || [] : [])];
     who.forEach(n => got.push({ t: "人", key: `人|${nk(n)}|${sh}`, n, sh }));
     (r.外注 || []).forEach(g => (g.名前 || []).forEach(x => x && x.名前 && got.push({ t: "外", key: `外|${nk(x.名前)}|${sh}`, n: x.名前, sh, co: g.業者 })));
     (r.作業行 || []).forEach(l => { if (l.予定) got.push({ t: "予", key: "予|" + nk(l.予定), v: l.予定 }); if (l.報告) got.push({ t: "報", key: "報|" + nk(l.報告), v: l.報告, p: l.予定 }); });
@@ -300,6 +303,8 @@ function linkEntry(n) {
     return;
   }
   history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
+  // 工事日報で押した行（まだ日報の書式で書いていない行）：その人を記入者に、その行の中身を用紙に（2026-11-21 ユーザー）
+  LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "" } : null;
   UI.gen = x.元請id; UI.site = x.id; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll(); askForm();
 }
 linkEntry();
