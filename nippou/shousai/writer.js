@@ -109,7 +109,7 @@ async function writerSync() {
       delete s.日[k]; WS.lost.push(`${siteLabel(s)} ${k}`); delete WS.where[key]; delete WS.done[key]; delete WS.sent[key];
     }
     if (WS.lost.length) save();
-    WS.readOk = true;
+    WS.readOk = true; WS.readOnce = true;   // readOnce：一度でも読み終わった（次の読み直しの最中も false に戻さない。link.js が待つのに使う）
     // 2) 書く：MOVE_FROM からの日で、記入者が決まっていて、変わったもの
     const jobs = new Map();   // ファイル名 → [{ s, k, d|null（消す） }]
     const add = (name, j) => { if (!jobs.has(name)) jobs.set(name, []); jobs.get(name).push(j); };
