@@ -5,7 +5,9 @@
    ・現場の行の 作業員（と「担当が行った」なら担当の社員）の1人ずつに、その人の日報（個人_<名前>_<月>.json）の行を足す。
      行先＝現場名（現場一覧の名前を確かめる）・区分（昼勤／夜勤 → 8:00〜17:00／21:00〜6:00）・作業内容・同じ現場の人（行.同行。参加者には入れない＝人数を重ねて数えない）。記入者＝その人。
    ・本社内勤の欄：本社内勤＝本社、有給・休み・明け休み＝休み、ほか（健康診断など）＝本社（記載を作業内容に）。機材センターの人＝機材センター。（「本社・休み・機材センターも入れる」で選ぶ）
-   ・取り込んだ行は 行.取込 = "haichi:日|現場名|区分"。もう一度取り込んでも重ならない。月ごとの取り込み方は imp.js（クロジカと同じ）。 */
+   ・外注の欄（2026-11-21）：担当が行った（黄色）の担当を、その外注の現場の行に入れる（現場の欄の同じ現場・同じ区分とまとめる）。
+     外注業者と員数は、その現場で最初の担当の行だけに入れる（予定の日は 予定.外注）。人ごとに入れると月の集計で人数が重なるため。
+   ・取り込んだ行は 行.取込 ="haichi:日|現場名|区分"。もう一度取り込んでも重ならない。月ごとの取り込み方は imp.js（クロジカと同じ）。 */
 "use strict";
 let HAI = null;   // { from, to, hon, years: { 年: { 確定, 予定 } }, map: Map(現場名の形 → { raw, n, v, code, how, on }), pol, def }
 const haiDays = H => { const out = []; for (let k = H.from; k <= H.to; k = dayAdd(k, 1)) out.push(k); return out; };
@@ -59,7 +61,8 @@ function haiHonsha(t) {
   if (m) { const x = kuroGuess(m[1].trim()); return x.how === "一覧にない" ? { work: m[1].trim() } : { rel: { 名前: x.v, コード: x.code || "" } }; }
   return { work: /^本社(内勤)?$/.test(t) ? "" : t };
 }
-const haiPlaces = d => [...(d.現場 || []).map(gx => gx.現場名).filter(Boolean)];
+const haiGai = d => (d.外注 || []).filter(b => b && b.現場名 && b.担当 && b.担当が行った);
+const haiPlaces = d => [...(d.現場 || []).map(gx => gx.現場名), ...haiGai(d).map(b => b.現場名)].filter(Boolean);
 // 現場名の対応表を作る（現場一覧の名前に寄せる。クロジカと同じ kuroGuess）
 function haiBuild(H) {
   const old = H.map || new Map(), map = new Map();
@@ -68,11 +71,12 @@ function haiBuild(H) {
   haiDays(H).forEach(k => { const x = haiDay(H, k); if (x) haiPlaces(x.d).forEach(p => map.get(kKey(p)).n++); });
   H.map = map;
 }
-function haiRow(k, place, code, night, work, plan, mates, owner, id, extra) {
+function haiRow(k, place, code, night, work, plan, mates, owner, id, extra, gai) {
   const r = { id: uid(), 行先: place, コード: code || "", 始め: night ? "21:00" : "8:00", 終わり: night ? "6:00" : "17:00", 終日: false, 区分: night ? "夜" : "昼",
     作業: "", 作業行: [{ 予定: plan ? work : "", 報告: plan ? "" : work }], 予定: { 人: [], 外注: [], 機械: [] }, 人: [], 外注: [], 機械: [],
     記入者: owner, 取込: id, 更新: nowStr(), ...(extra || {}) };
   if (mates.length) r.同行 = mates;
+  if (gai && gai.length) (plan ? r.予定 : r).外注 = gai.map(g => ({ ...g }));
   if (plan) r.予定のみ = true;
   syncWork(r);
   return { owner, k, r };
@@ -82,17 +86,30 @@ function haiItems(H) {
   haiDays(H).forEach(k => {
     const x = haiDay(H, k); if (!x) return;
     const d = x.d, by = new Map();   // 同じ日・同じ現場・同じ区分の行はまとめる（配置表で2行に分かれていることがある）
+    const grp = (name, kb) => {
+      const m = H.map.get(kKey(name)); if (!m || !m.on || !m.v) return null;
+      // 日報の現場名でまとめる（現場の欄「阿久和南道路改良」と外注の欄「阿久和南」が同じ現場のとき1つに）
+      const night = haiNight(kb), key = kKey(m.v) + "|" + (m.code || "") + "|" + (night ? "夜" : "昼");
+      if (!by.has(key)) by.set(key, { m, night, raw: name, ppl: [], work: [], gai: [], gaiTo: "" });
+      return by.get(key);
+    };
+    const addTo = (o, n) => { n = haiPerson(n); if (n && !o.ppl.some(v => nk(v) === nk(n))) o.ppl.push(n); return n; };
     (d.現場 || []).forEach(gx => {
-      const m = H.map.get(kKey(gx.現場名)); if (!m || !m.on || !m.v) return;
-      const night = haiNight(gx.区分), key = kKey(gx.現場名) + "|" + (night ? "夜" : "昼");
-      if (!by.has(key)) by.set(key, { m, night, raw: gx.現場名, ppl: [], work: [] });
-      const o = by.get(key), add = n => { n = haiPerson(n); if (n && !o.ppl.some(v => nk(v) === nk(n))) o.ppl.push(n); };
-      (gx.作業員 || []).forEach(w => add(w.氏名));
-      if (gx.担当が行った && tantoName(gx.担当)) add(tantoName(gx.担当));
+      const o = grp(gx.現場名, gx.区分); if (!o) return;
+      (gx.作業員 || []).forEach(w => addTo(o, w.氏名));
+      if (gx.担当が行った && tantoName(gx.担当)) addTo(o, tantoName(gx.担当));
       if (gx.作業内容 && !o.work.includes(gx.作業内容)) o.work.push(gx.作業内容);
     });
+    // 外注の欄：担当が行った（黄色）の担当だけ。業者と員数は、その現場で最初の担当の行だけに入れる
+    haiGai(d).forEach(b => {
+      const t = tantoName(b.担当); if (!t) return;
+      const o = grp(b.現場名, b.昼夜); if (!o) return;
+      const n = addTo(o, t); if (n && !o.gaiTo) o.gaiTo = n;
+      if (b.業者) o.gai.push({ 業者: String(b.業者).trim(), 人数: b.員数 == null ? "" : String(b.員数) });
+      if (b.作業内容 && !o.work.includes(b.作業内容)) o.work.push(b.作業内容);
+    });
     by.forEach(o => o.ppl.forEach(n => out.push(haiRow(k, o.m.v, o.m.code, o.night, o.work.join("\n"), x.plan, o.ppl.filter(v => v !== n), n,
-      `haichi:${k}|${nk(o.raw)}|${o.night ? "夜" : "昼"}`))));
+      `haichi:${k}|${nk(o.raw)}|${o.night ? "夜" : "昼"}`, null, n === o.gaiTo ? o.gai : null))));
     if (!H.hon) return;
     (d.本社 || []).forEach(h => { const n = haiPerson(h.氏名); if (!n) return; const t = haiHonsha(h.記載);
       out.push(haiRow(k, t.off ? "休み" : "本社", "", false, t.work || "", x.plan, [], n, `haichi:${k}|本社|${nk(n)}`, t.off ? { 終日: true, 始め: "", 終わり: "" } : t.rel ? { 関連現場: t.rel } : null)); });
