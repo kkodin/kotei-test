@@ -1028,7 +1028,7 @@ function refreshSheet() {
   const s = site(), d = day();
   $("hGen").textContent = gen() ? genName(gen()) : "";   // 元請業者は現場名から出る（2026-11-18 ユーザー：元請は入れなくてよい。押しても何も起きない）
   // 現場名（押すと「現場名を選ぶ」）。右に（本社）✓（現場名が本社のときは出さない）
-  { const hon = s && !isHonshaSite(s), on = !!(d && d.本社);
+  { const hon = s && !isHonshaSite(s), on = !!(d && d.本社) || (!d && typeof LK !== "undefined" && LK.entry && LK.entry.hon && LK.entry.site === UI.site && LK.entry.k === UI.day);   // 本社（現場名）の行から開いた日は、日報ができる前から ✓
     // 2026-11-21 ユーザー：阿久和南道路改良を押したのに現場名が造成工事 → 画面は「略称＋現場コード」（正式名は出さない。印刷・Excel は今までどおり）
     $("hSite").innerHTML = s ? esc(s.略称 || s.名前) + (s.コード ? `<small class="formal">${esc(s.コード)}</small>` : "") + (hon ? `<label class="honChk${on ? " on" : ""}" title="本社勤務だが、この現場の仕事として扱う日に付けます（工事日報では「本社（${esc(s.略称 || s.名前)}）」）"><input type="checkbox" id="hHon"${on ? " checked" : ""}${RO ? " disabled" : ""}>（本社）</label>` : "") : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）"; }
   $("hDate").textContent = jpDate(UI.day);
@@ -1076,7 +1076,7 @@ function renderTabs() {
   $("tabs").innerHTML = h.join("");
   const on = $("tabs").querySelector(".on"); on && on.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
-$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (b) setDay(b.dataset.d); });
+$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (b) tabDay(b.dataset.d); });   // 2026-11-21：ほかの人の日報を見ているときは、その人の日報へ（writer.js tabDay）
 $("tPrev").onclick = () => setDay(addD(period(UI.day)[0], -1));
 $("tNext").onclick = () => setDay(addD(period(UI.day)[1], 1));
 
@@ -1702,9 +1702,12 @@ async function formGet() {
   return { doc: await b.json(), eTag: m.eTag };
 }
 const formKey = s => s.コード ? "c:" + s.コード : "n:" + nk(s.略称 || s.名前);
+// 日時の文字（2026/11/4 16:39:15・2026-11-10 18:00:10）を数に。無ければ 0
+const tOfStr = v => { const m = /(\d{4})\D(\d{1,2})\D(\d{1,2})(?:\D+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/.exec(String(v || "")); return m ? new Date(+m[1], m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime() : 0; };
+// 2026-11-21 ユーザー：常用の現場以外に常用 ✓ が付いていた（詳細日報に前の「常用」が残り、工事日報で決めた「請負」より先に出ていた）→ 現場設定の方が新しければそちらにする
 async function formLoad() {
   if (DEMO || !signedIn()) { FORM_READY = true; askForm(); return; }
-  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (!s.形態 && x && x.形態) { s.形態 = x.形態; s.形態の元 = "工事日報の現場設定" + (x.だれ ? "・" + String(x.だれ).replace(/[\s　]/g, "") : "") + (x.更新 ? " " + String(x.更新).slice(0, 10) : ""); ch = true; } }); if (ch) { save(); renderPickers(); } }
+  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (x && x.形態 && (!s.形態 || (x.形態 !== s.形態 && tOfStr(x.更新) > tOfStr(s.設定更新)))) { s.形態 = x.形態; if (s.前回形態 && s.前回形態 !== x.形態) s.前回形態 = x.形態; s.設定更新 = x.更新 || s.設定更新; s.形態の元 = "工事日報の現場設定" + (x.だれ ? "・" + String(x.だれ).replace(/[\s　]/g, "") : "") + (x.更新 ? " " + String(x.更新).slice(0, 10) : ""); ch = true; } }); if (ch) { save(); renderPickers(); } }
   catch (e) { console.warn("現場設定を読めませんでした", e); }
   finally { FORM_READY = true; refreshSheet(); askForm(); }
 }
@@ -1913,6 +1916,8 @@ const saveME = () => { try { localStorage.setItem(MEKEY, JSON.stringify(ME)); } 
 saveME();
 const STALE = 3 * 60 * 1000;
 const LOCK = { site: null, mine: false, eTag: null, busy: false, req: 0, wait: false, asked: 0, done: 0 };   // req：交代を頼んだ時刻／wait：使い終わるのを待つ／asked・done：頼みを見た・答えた（編集中の側）
+// 2026-11-21 ユーザー：過去の日誌を閲覧しているだけ → 工事日報から現場・日を決めて開いたとき（?open=entry&code|name）は見るだけで開く。上の「編集する」を押した人が直す
+let VIEW_FIRST = (q => q.get("open") === "entry" && !!(q.get("code") || q.get("name")))(new URLSearchParams(location.search));
 let RO = null;   // null＝直せる／{ by:{名前,開始,いつ} }＝ほかの人が使用中／{ self:true }＝自分で見るだけにした／{ gone:true, by }＝使っていた人が終わった
 const lockName = id => "使用中_" + id + ".json";
 // 同じ人か：サインインしたアカウントで見る（PC と iPad の両方で同じ人が開いても、別の人とみなさない。2026-10-31 ユーザー）。
@@ -1931,9 +1936,10 @@ function canEdit() {
   return false;
 }
 function setRO(v) {
-  RO = v;
+  const was = RO; RO = v;
+  if (!!was !== !!RO) setTimeout(() => { refreshSheet(); }, 0);   // 見るだけ ⇔ 編集 が替わったら描き直す（編集にしたら工事日報の行を入れる・見るだけの知らせを出す。2026-11-21）
   document.body.classList.toggle("ro", !!RO);
-  ["hWx", "hTmp", "hTan", "hBikou"].forEach(id => { if ($(id)) $(id).disabled = !!RO; });
+  ["hWx", "hTmp", "hBikou"].forEach(id => { if ($(id)) $(id).disabled = !!RO; });   // 記入者の欄（hTan）は閲覧のみでも押せる：押すと人を選んでその人の日報に切り替える（2026-11-21 ユーザー）
   const bar = $("roBar");
   if (!RO) { bar.hidden = true; }
   else {
@@ -1951,10 +1957,12 @@ function setRO(v) {
   $("bRo").className = "sub rotg" + (RO ? " on" : "");
 }
 async function takeLock(force, fromSelf) {
+  if (fromSelf || force) VIEW_FIRST = false;   // 「編集する」を押した
   const id = UI.site;
   if (LOCK.site && LOCK.site !== id && LOCK.mine) releaseLock(LOCK.site);
   LOCK.site = id; LOCK.mine = false; LOCK.eTag = null;
   if (!id || !signedIn()) { setRO(null); return; }
+  if (VIEW_FIRST) { setRO({ self: true }); return; }   // 工事日報から開いたときは見るだけ（札を取らない）。上の「編集する」で直す
   if (!ME.名前) { askName(); return; }
   if (LOCK.busy) return; LOCK.busy = true;
   try {

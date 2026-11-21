@@ -282,8 +282,10 @@ function detailInit() {
   // 元請業者は押しても選ばない（2026-11-18 ユーザー：現場名を選べば出る）。現場名だけが「現場名を選ぶ」の入口。（本社）✓ を押したときは窓を出さない
   for (const el of [$("hSite"), $("hSite").previousElementSibling]) {
     el.classList.add("site-trigger"); el.tabIndex = 0; el.setAttribute("role", "button"); el.title = "現場名を選ぶ";
-    el.onclick = e => { if (e.target.closest(".honChk")) return; detailOpenSites(); };
-    el.onkeydown = e => { if (e.target.closest(".honChk")) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenSites(); } };
+    // 閲覧のみのときは、この現場のひと月分の一覧（siteMonthOpen。2026-11-21 ユーザー）
+    const go = () => (RO && site() && typeof siteMonthOpen === "function" ? siteMonthOpen() : detailOpenSites());
+    el.onclick = e => { if (e.target.closest(".honChk")) return; go(); };
+    el.onkeydown = e => { if (e.target.closest(".honChk")) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
   }
   $("hGen").title = "現場名を選ぶと出ます";
   $("detailChooseSite").onclick = detailOpenSites;

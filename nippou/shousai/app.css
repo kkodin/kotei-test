@@ -491,3 +491,17 @@ dialog .btns.hoisted { display: none; }
 .calgrid button .pp.what { color: #8a5a00; }   /* 人のいない記入済みの日：休工・燃料など（2026-11-17） */
 .secT .planToDone { margin-left: 10px; font-size: 11px; padding: 1px 8px; font-weight: normal; }   /* 作業予定→完了報告（2026-11-17） */
 @media print { .secT .planToDone { display: none; } }
+
+/* 閲覧のみで現場名を押したときの、現場のひと月分（2026-11-21） */
+.smnav { display: flex; gap: 8px; margin-bottom: 6px; } .smnav .sp { flex: 1; }
+.smwrap { max-height: 65vh; overflow: auto; overscroll-behavior: contain; min-width: min(760px, 86vw); }
+table.smlist { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.smlist th, table.smlist td { border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
+table.smlist th { background: #f3f5f7; position: sticky; top: 0; white-space: nowrap; }
+table.smlist td:nth-child(4) { width: 32%; } table.smlist td:nth-child(5) { width: 42%; }
+table.smlist td.c { text-align: center; white-space: nowrap; width: 2.4em; }
+table.smlist td:nth-child(3) { white-space: nowrap; }
+table.smlist tbody tr { cursor: pointer; } table.smlist tbody tr:hover { background: #eef5fb; }
+table.smlist tr.sun td.c { color: #c0392b; } table.smlist tr.sat td.c { color: #2b6cb0; }
+table.smlist tr.on { outline: 2px solid #1e5a96; outline-offset: -2px; }
+table.smlist tr:not(.has) td { color: #999; }

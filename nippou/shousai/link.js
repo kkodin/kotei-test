@@ -115,11 +115,14 @@ function linkPut(key, r, cells) {
 const sameSite = (s, r) => (s.コード && r.コード ? String(s.コード) === String(r.コード) : siteScore(s, r.行先) === 3);
 async function linkPull(s, k) {
   const docs = await nippouDocs(k.slice(0, 7));
-  if (site() !== s || UI.day !== k || !canEdit() || busyEditing()) return;
+  if (site() !== s || UI.day !== k || RO || !canEdit() || busyEditing()) return;   // 見るだけのときは黙って入れない
   const got = [];
   // 工事日報で押した行：その日の日報がまだ無いときだけ、取り込んだ行（配置表など）でも入れる。同じ現場の人（行.同行）も作業員に
   let pickHon = false;   // 押した行が「本社（現場名）」：この現場の日報に（本社）✓ を付ける（2026-11-21）
-  const E = LK.entry && LK.entry.site === s.id && LK.entry.k === k && LK.entry.rid && !day() ? LK.entry : null;
+  // まだどの記入者のファイルにも無い日（この端末だけの空の日も）なら入れる（2026-11-21：前に開いた空の日が残っていると入らなかった）
+  const saved = typeof WS !== "undefined" && WS.where && WS.where[wKey(s.id, k)];
+  const E = LK.entry && LK.entry.site === s.id && LK.entry.k === k && LK.entry.rid && (!day() || !saved) ? LK.entry : null;
+  if (E && E.hon) pickHon = true;
   docs.forEach(doc => (((doc.日 || {})[k] || {}).行 || []).forEach(r => {
     const picked = E && r.id === E.rid; if (picked && r.行先 === "本社") pickHon = true;
     // 押した行は、名前が詳細日報の現場名とちがっても（阿久和南道路改良 ↔ 正式名の 造成工事。2026-11-21）この現場の行（開くときに現場を決めた行なので）
@@ -270,16 +273,58 @@ async function linkCheck(s, k, tk) {
   $("chkDone").onclick = () => { if (!canEdit()) return; d.確認済 = fp; d.更新 = now(); save(); linkPaint(true); };
 }
 
+/* ---------- 見るだけで開いて、まだ日報の書式で書いていない日：押した行の中身を上に見せる（2026-11-21 ユーザー：閲覧だけ・編集は「編集する」） ---------- */
+function linkEntryNote() {
+  let el = $("entryNote");
+  if (!el) { el = document.createElement("div"); el.id = "entryNote"; el.className = "wrbar"; $("roBar").after(el); }
+  const E = LK.entry, s = site();
+  if (!RO || !E || !E.rid || !s || E.site !== s.id || E.k !== UI.day || day()) { el.hidden = true; return; }
+  el.hidden = false;
+  nippouDocs(E.k.slice(0, 7)).then(docs => {
+    if (site() !== s || UI.day !== E.k || day()) { el.hidden = true; return; }
+    let r = null, who = "";
+    docs.forEach(doc => ((((doc.日 || {})[E.k] || {}).行) || []).forEach(y => { if (y.id === E.rid) { r = y; who = doc.名前 || ""; } }));
+    if (!r) { el.hidden = true; return; }
+    const L = (r.作業行 || []).map(l => [l.予定 ? "予定：" + l.予定 : "", l.報告 ? "報告：" + l.報告 : ""].filter(Boolean).join("　")).filter(Boolean);
+    const ppl = [...new Set([...(r.本人 !== false && who ? [who] : []), ...(r.人 || []), ...(r.同行 || [])])];
+    el.innerHTML = `📝 この日は、まだ日報の書式で書かれていません。工事日報の内容：${esc(L.join(" ／ ") || "（作業内容なし）")}${ppl.length ? `　人：${esc(ppl.join("、"))}` : ""}<br><small>書くときは上の「編集する」を押してください（この内容が用紙に入ります）</small>`;
+  }).catch(() => { el.hidden = true; });
+}
+/* ---------- 閲覧のみで現場名を押す：この現場のひと月分を縦に（2026-11-21 ユーザー：日・曜日・記入者・参加者・作業内容。記入者が違ってもこの現場だけ） ----------
+   行を押すとその日の日報（見るだけのまま）。◀▶ で月を移る。 */
+function siteMonthOpen(m) {
+  const s = site(); if (!s) return;
+  m = m || UI.day.slice(0, 7);
+  const [y, mo] = m.split("-").map(Number), n = new Date(y, mo, 0).getDate(), rows = [];
+  for (let i = 1; i <= n; i++) {
+    const k = `${m}-${pad(i)}`, d = s.日[k], w = wd(k), has = hasData(d);
+    const ppl = has ? [...new Set(rowsOf(d).filter(r => r && r[0]).map(r => String(r[0]).trim()))] : [];
+    const work = has ? (d.上 || []).filter(r => r && (r[1] || r[4])).map(r => String(r[4] || r[1]).trim()).filter(Boolean) : [];
+    rows.push(`<tr data-smk="${k}" class="${w === 0 ? "sun" : w === 6 ? "sat" : ""}${k === UI.day ? " on" : ""}${has ? " has" : ""}"><td class="c">${i}</td><td class="c">${WD[w]}</td><td>${has ? esc(d.担当者 || "―") : ""}</td><td>${esc(ppl.join("、"))}</td><td>${esc(work.join(" ／ "))}</td></tr>`);
+  }
+  const prev = new Date(y, mo - 2, 1), next = new Date(y, mo, 1), mk = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  $("eTtl").textContent = `${s.略称 || s.名前}　${y}年${mo}月の日報`;
+  $("eBody").innerHTML = `<div class="smnav"><button type="button" class="sub small" data-smm="${mk(prev)}">◀ 前の月</button><span class="sp"></span><button type="button" class="sub small" data-smm="${mk(next)}">次の月 ▶</button></div>
+    <div class="smwrap"><table class="smlist"><thead><tr><th>日</th><th>曜日</th><th>記入者</th><th>参加者</th><th>作業内容</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <p class="note">行を押すと、その日の日報を開きます（見るだけ）。</p>`;
+  if (!$("dEdit").open) openDlg($("dEdit"));
+  $("eBody").onkeydown = null;
+  $("eBody").onclick = e => {
+    const b = e.target.closest("[data-smm]"); if (b) { siteMonthOpen(b.dataset.smm); return; }
+    const tr = e.target.closest("[data-smk]"); if (!tr) return;
+    closeDlg($("dEdit")); UI.detailView = "site"; detailSelectSite(s.id, tr.dataset.smk);
+  };
+}
 /* ---------- 画面を描くたびに ---------- */
 function linkPaint(force) {
   const s = site(), k = UI.day; if (!$("kikaiPlan")) return;
-  linkPaintKikai();
+  linkPaintKikai(); linkEntryNote();
   const tk = ++LK.chk; if (s) linkCheck(s, k, tk).catch(e => console.warn(e)); else $("chkBar").innerHTML = "";
   clearTimeout(LK.timer);
   if (!s || !signedIn() || k < LINK_FROM) return;
   const key = s.id + "|" + k, fresh = key !== LK.key;
   LK.timer = setTimeout(async () => {
-    if (site() !== s || UI.day !== k || !canEdit() || busyEditing() || LK.busy) return;
+    if (site() !== s || UI.day !== k || RO || !canEdit() || busyEditing() || LK.busy) return;
     // 2026-11-21 ユーザー：工事日報から開くと自分が記入者の空の日報になる。記入者ごとの日報を読み終わる前に入れると、
     // まだ読んでいない日を「新しい日（記入者＝自分）」として作ってしまうので、読み終わるまで待つ（読み終わると描き直しでもう一度ここへ来る）
     // 読み直しは何度も走る（readOk はそのたびに false に戻る）ので、一度読み終わったかで見る（2026-11-21：読み直しと重なって入らなかった）
@@ -314,7 +359,7 @@ function linkEntry(n) {
   }
   history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
   // 工事日報で押した行（まだ日報の書式で書いていない行）：その人を記入者に、その行の中身を用紙に（2026-11-21 ユーザー）
-  LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "" } : null;
+  LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "", hon: q.get("hon") === "1" } : null;
   UI.gen = x.元請id; UI.site = x.id; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll(); askForm();
 }
 linkEntry();

@@ -201,6 +201,19 @@ ensureDay = function () { const had = day(), d = wEnsure0(); if (d && !had && !d
    1) この日に、その人が記入者の日報 → 2) この日に、その人が作業員・外注に入っている日報 → 3) この日より前で、いちばん近い日のその人の日報。
    現場を選んであれば（人の窓の「この現場に行った人」）その現場を先に探す。 */
 $("hTan").onclick = () => detailOpenPeople("view");
+/* 下の日付タブ（2026-11-21 ユーザー：佐相さんの日報を見ているとき、別の日を押したら佐相さんの日報へ）
+   ほかの人の日報を見ているときは、その人がその日に記入者（なければ作業員）の日報へ。無ければこの現場のその日を開いて知らせる */
+let TAB_WHO = "";
+function tabDay(d) {
+  const who = (day() && String(day().担当者 || "").trim()) || TAB_WHO || entryWriter();
+  if (UI.detailView !== "writer" && who && myName() && nk(who) !== nk(myName())) {
+    TAB_WHO = who;
+    const rank = x => (x.s.id === UI.site ? 0 : 2) + (x.w ? 0 : 1), hit = wPersonDays(who).filter(x => x.k === d).sort((a, b) => rank(a) - rank(b))[0];
+    if (hit) { if (hit.s.id === UI.site) setDay(d); else { UI.detailView = "site"; detailSelectSite(hit.s.id, d); } return; }
+    setDay(d); toast(`${who} さんの ${jpDate(d)} の日報はありません（この現場の ${jpDate(d)} を開きました）`, 5000); return;
+  }
+  TAB_WHO = ""; setDay(d);
+}
 $("hTan").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenPeople("view"); } };
 function wPersonDays(name) {
   const n = nk(name), out = [];

@@ -535,7 +535,7 @@ const reportUrl = (r, k) => r.関連現場 && r.関連現場.名前 ? detailUrl(
 async function openReport(x) {
   if (!reportSite(x.r)) return showEv(x);
   if (x.r.書式 || x.r.詳細) { location.href = reportUrl(x.r, x.k); return; }
-  location.href = reportUrl(x.r, x.k) + `&w=${encodeURIComponent(x.who || "")}&rid=${encodeURIComponent(x.r.id || "")}`;
+  location.href = reportUrl(x.r, x.k) + `&w=${encodeURIComponent(x.who || "")}&rid=${encodeURIComponent(x.r.id || "")}` + (x.r.行先 === "本社" ? "&hon=1" : "");   // 本社（現場名）の行：詳細日報で（本社）✓
 }
 async function openDay(k, who) {
   const xs = evsOn(await docsFor([k]), k).filter(x => membersOf(x).some(v => nk(v) === nk(who)));
