@@ -272,6 +272,9 @@ function linkPaint(force) {
   const key = s.id + "|" + k, fresh = key !== LK.key;
   LK.timer = setTimeout(async () => {
     if (site() !== s || UI.day !== k || !canEdit() || busyEditing() || LK.busy) return;
+    // 2026-11-21 ユーザー：工事日報から開くと自分が記入者の空の日報になる。記入者ごとの日報を読み終わる前に入れると、
+    // まだ読んでいない日を「新しい日（記入者＝自分）」として作ってしまうので、読み終わるまで待つ（読み終わると描き直しでもう一度ここへ来る）
+    if (signedIn() && !DEMO && typeof WS !== "undefined" && !WS.readOk) return;
     LK.busy = true;
     try { if (fresh || force) { LK.key = key; await linkPull(s, k); } await kikaiPush(s, k); }
     catch (e) { console.warn("工事日報・稼働表とつなげませんでした", e); }

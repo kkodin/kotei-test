@@ -359,7 +359,8 @@ function showEv(x) {
     return p || q ? `<div class="pr2"><div><small>予定</small>${p || "―"}</div><div><small>報告</small>${q || "―"}</div></div>` : "―";
   };
   const chipsT = a => a.map(n => `<span class="chip ro">${esc(n)}</span>`).join("");
-  const mem = [...(r.本人 !== false ? [x.who] : []), ...listIn(r, "r", "人")], site = !!r.書式 || (!!r.行先 && !isOffice(r.行先));
+  // 日報の書式でまだ書いていない行（noForm）：他の人の行からは詳細日報を開かない（開くと自分が記入者の空の日報になる）。自分の行は「日報の書式で書く」
+  const mem = [...(r.本人 !== false ? [x.who] : []), ...listIn(r, "r", "人")], site = (!!r.書式 || (!!r.行先 && !isOffice(r.行先))) && !(x.noForm && !x.mine);
   dlg(`<div class="dh"><h2>スケジュール詳細</h2><button type="button" data-close aria-label="閉じる">×</button></div><table class="ft">
     <tr><th>日時</th><td>${fmtDay(x.k)}　${kubunOf(r)}勤　${r.終日 || !(r.始め || r.終わり) ? "終日" : esc(`${r.始め || ""} - ${r.終わり || ""}`)}</td></tr>
     <tr><th>現場</th><td><b>${esc(titleOf(r))}</b><div class="pinfo">${siteInfo(r.行先, r.コード)}</div></td></tr>
@@ -370,7 +371,7 @@ function showEv(x) {
     <tr><th>外注</th><td>${two("外注", a => esc(gaiTxt(a)))}</td></tr>
     <tr><th>設備</th><td>${two("機械", chipsT)}${(r.未使用機械 || []).length ? `<div class="pinfo">使わなかった：${esc(r.未使用機械.join("、"))}</div>` : ""}</td></tr>
     <tr><th>記入者</th><td>${esc(x.who)}${r.更新 ? `（${esc(r.更新)}）` : ""}${x.rep ? "" : "　<span class=\"badge draft\">書きかけ</span>"}</td></tr>
-  </table><div class="btns"><button data-close>閉じる</button>${site ? `<button id="sDetail" class="pri" title="詳細日報（日報の書式）で、この現場・この日を開いて直す">編集する（日報の書式）</button>` : ""}${x.mine ? `<button id="sEdit"${site ? ` title="時間・行先・参加者だけをこの窓で直す"` : ""}>${site ? "かんたん編集" : "編集する"}</button><button id="sDel">削除する</button>` : ""}<button id="sCopy">コピーして登録する</button></div>`, "wide");
+  </table><div class="btns"><button data-close>閉じる</button>${site ? `<button id="sDetail" class="pri" title="詳細日報（日報の書式）で、この現場・この日を開いて直す">${x.noForm ? "日報の書式で書く" : "編集する（日報の書式）"}</button>` : ""}${x.mine ? `<button id="sEdit"${site ? ` title="時間・行先・参加者だけをこの窓で直す"` : ""}>${site ? "かんたん編集" : "編集する"}</button><button id="sDel">削除する</button>` : ""}<button id="sCopy">コピーして登録する</button></div>`, "wide");
   if ($("sForm")) $("sForm").onchange = () => setForm(r.行先, r.コード, $("sForm").value);
   // 編集は詳細日報（前に常用日報として作った日報の書式）で開く。だれの行でも（2026-11-15 ユーザー）。本社・休みは日報の書式が無いので、自分の行だけこの窓で直す
   if ($("sDetail")) $("sDetail").onclick = () => { closeDlg(); location.href = reportUrl(r, x.k); };
@@ -524,9 +525,17 @@ async function syncKikai(k, r) {
 const reportSite = r => !!r.書式 || (!!r.行先 && !isOffice(r.行先) && r.行先 !== "機材センター");   // 日報の書式で書く行（本社・休み・機材センターは除く。詳細日報で書いた本社の日報＝書式のある行は日報で開く 2026-11-18）
 // 詳細日報で書いた「本社＋現場名」の行は、その現場の日報を開く
 const reportUrl = (r, k) => r.書式 && r.関連現場 ? detailUrl(r.関連現場.名前, r.関連現場.コード, k) : detailUrl(r.行先, r.コード, k);
-function openReport(x) {
-  if (reportSite(x.r)) { location.href = reportUrl(x.r, x.k); return; }
-  showEv(x);
+// 2026-11-21 ユーザー：日報が入っている所を押すと、自分が記入者の空の日報が開いてしまう。
+// 配置表・クロジカから取り込んだ行など、日報の書式で書いていない行は、詳細日報にまだ日報が無い（開くと自分が記入者の新しい日報になる）。
+// その現場・その日の日報（書式のある行・前の詳細日報）がだれかにあるときだけ詳細日報を開き、無ければスケジュール詳細で中身を見せる
+const formSiteKey = r => r.書式 && r.関連現場 ? plOf(r.関連現場.名前, r.関連現場.コード).key : plOf(r.行先, r.コード).key;
+async function openReport(x) {
+  if (!reportSite(x.r)) return showEv(x);
+  if (x.r.書式 || x.r.詳細) { location.href = reportUrl(x.r, x.k); return; }
+  let has = false;
+  try { const key = formSiteKey(x.r); has = evsOn(await docsFor([x.k]), x.k).some(y => (y.r.書式 || y.r.詳細) && formSiteKey(y.r) === key); } catch (e) { }
+  if (has) { location.href = reportUrl(x.r, x.k); return; }
+  showEv({ ...x, noForm: true });
 }
 async function openDay(k, who) {
   const xs = evsOn(await docsFor([k]), k).filter(x => membersOf(x).some(v => nk(v) === nk(who)));
