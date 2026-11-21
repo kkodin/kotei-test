@@ -9,6 +9,8 @@
 "use strict";
 const LINK_FROM = "2026-11-01";
 const LK = { key: "", busy: false, ndocs: {}, kk: null, chk: 0, timer: null };
+// 開いたときのアドレスの引数（linkEntry はすぐ消すので、あとで読む writer.js の MINE はこれを見る。2026-11-21：消えたアドレスを見て今日の自分の日報へ移っていた）
+const OPEN_Q = new URLSearchParams(location.search);
 const linkUrl = (id, q) => HX.appUrl(id, q);   // アプリの一覧とアドレスは共通の部品（common/apps.js）
 // 上の帯のボタン：書いた分を共有してから移る
 async function linkGo(id, q) {

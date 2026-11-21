@@ -248,7 +248,7 @@ paintWriterBar();
 /* ---------- 開いたときは、今日の自分の日報（2026-11-19 ユーザー：前に見ていた現場（塩浜立体）の日報が出てしまう） ----------
    ふつうに開いたとき（?open=entry・?from が無い）：今日・自分が記入者の日報を開く。まだ書いていなければ空欄（現場名を選ぶ前）で開く。
    共有を読み終わったあと・名前を入れたあとにも探し直す（開いたままで、まだ何も触っていないときだけ。2分まで）。 */
-const MINE = (() => { const q = new URLSearchParams(location.search); return { on: q.get("open") !== "entry" && !q.has("from"), t: Date.now(), site: null, day: "" }; })();
+const MINE = (() => { const q = typeof OPEN_Q !== "undefined" ? OPEN_Q : new URLSearchParams(location.search); return { on: q.get("open") !== "entry" && !q.has("from"), t: Date.now(), site: null, day: "" }; })();
 function myReportOn(k) {
   const me = nk(myName()); if (!me) return null;
   let hit = null;
