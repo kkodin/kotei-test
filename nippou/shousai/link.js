@@ -36,7 +36,8 @@ async function nippouDocs(m, force) {
   if (DEMO) docs = Object.entries(demoNippou()).filter(([n]) => n.startsWith("日報/個人_") && n.endsWith(`_${m}.json`)).map(([, x]) => x.data);
   else {
     const F = CFG.kotei, auth = { headers: { Authorization: "Bearer " + await token() } };
-    const res = await fetch(`${GRAPH}/drives/${F.driveId}/items/${F.itemId}:/${enc("日報")}:/children?$top=999&$select=name,@microsoft.graph.downloadUrl`, auth);
+    // $select に @microsoft.graph.downloadUrl を書くと、その欄が返らず中身を1つも読めなかった（2026-11-21 確認：19件あるのに0件）。$select は付けない
+    const res = await fetch(`${GRAPH}/drives/${F.driveId}/items/${F.itemId}:/${enc("日報")}:/children?$top=999`, auth);
     if (!res.ok) throw httpErr(res, "工事日報");
     const L = (await res.json()).value.filter(x => x.name.startsWith("個人_") && x.name.endsWith(`_${m}.json`));
     docs = (await Promise.all(L.map(x => fetch(x["@microsoft.graph.downloadUrl"], { cache: "no-store" }).then(r => r.json()).catch(() => null)))).filter(Boolean);
@@ -393,7 +394,10 @@ function linkEntry(n) {
   // 配置表から取り込んだ行：記入者は配置表のその現場の担当者（writer.js の entryTanto）。
   // link.js は writer.js より先に読むので、すぐ呼ぶと「entryTanto が無い」で止まり、上の現場の切り替えまで届かなかった
   // （2026-11-21 ユーザー：配置表から取り込んだ行を押したのに、前に見ていた別の現場が開いた）。現場を切り替えてから、読み終わった後に呼ぶ
-  if (LK.entry && LK.entry.imp) setTimeout(() => { if (typeof entryTanto === "function") entryTanto(); }, 0);
+  // 開いた直後はサインインの準備が済んでいないことがあり、担当者が分からないまま終わる → 分かるまで数回呼び直す
+  const E0 = LK.entry, tanto = n => { if (LK.entry !== E0 || E0.tantoDone || typeof entryTanto !== "function") return;
+    entryTanto().catch(e => console.warn(e)).finally(() => { if (LK.entry === E0 && !E0.tantoDone && n < 6) setTimeout(() => tanto(n + 1), 2000); }); };
+  if (E0 && E0.imp) setTimeout(() => tanto(0), 0);
 }
 linkEntry();
 linkPaint();
