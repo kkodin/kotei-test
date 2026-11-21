@@ -1047,7 +1047,7 @@ function refreshSheet() {
   $("hWx").innerHTML = `<option value="">　</option>` + wxs.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
   $("hWx").value = wx;
   if (document.activeElement !== $("hTmp")) $("hTmp").value = d ? d.気温 : "";
-  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : (ME && ME.名前) || "";   // 新規の日報（まだ書いていない日）の記入者＝編集している人。書き始めると日報に入る（writer.js の ensureDay）
+  if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : (typeof entryWriter === "function" && entryWriter()) || (ME && ME.名前) || "";   // 工事日報で押した行から開いたときは、その行の人（2026-11-21）   // 新規の日報（まだ書いていない日）の記入者＝編集している人。書き始めると日報に入る（writer.js の ensureDay）
   $("hTan").placeholder = s && s.担当者 ? "前回 " + s.担当者 : "";   // 記入者は日によって替わる（2026-10-31 ユーザー）。前回の人は薄い字で見せるだけ
   { const n = pageCount(d); if ((UI.pg || 0) > n - 1) UI.pg = n - 1;
     $("pgNo").textContent = n > 1 ? `（${(UI.pg || 0) + 1}／${n}ページ）` : "";

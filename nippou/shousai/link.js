@@ -121,7 +121,8 @@ async function linkPull(s, k) {
   const E = LK.entry && LK.entry.site === s.id && LK.entry.k === k && LK.entry.rid && !day() ? LK.entry : null;
   docs.forEach(doc => (((doc.日 || {})[k] || {}).行 || []).forEach(r => {
     const picked = E && r.id === E.rid;
-    if (!r.行先 || !sameSite(s, r) || r.詳細 || r.書式 || (!picked && /^(jouyou|haichi):/.test(String(r.取込 || "")))) return;   // 書式のある行は、この用紙で書いた日報そのもの
+    // 押した行は、名前が詳細日報の現場名とちがっても（阿久和南道路改良 ↔ 正式名の 造成工事。2026-11-21）この現場の行（開くときに現場を決めた行なので）
+    if (!r.行先 || !(picked || sameSite(s, r)) || r.詳細 || r.書式 || (!picked && /^(jouyou|haichi):/.test(String(r.取込 || "")))) return;   // 書式のある行は、この用紙で書いた日報そのもの
     const h = parseInt(String(r.始め || "").split(":")[0], 10), sh = r.区分 === "夜" || (!r.区分 && (h >= 17 || h < 5)) ? "夜" : "昼";
     const rep = r.人 || [], who = [...(r.本人 !== false && doc.名前 ? [doc.名前] : []), ...(rep.length ? rep : ((r.予定 || {}).人 || [])), ...(picked ? r.同行 || [] : [])];
     who.forEach(n => got.push({ t: "人", key: `人|${nk(n)}|${sh}`, n, sh }));
@@ -298,7 +299,11 @@ function linkEntry(n) {
     UI.site = null; UI.gen = null; UI.newForm = ""; UI.day = q.get("d") || ymd(new Date()); UI.pg = 0; saveUI(); showTab("sheet"); renderAll();   // 新規の日報：元請・現場は空欄（区分を先に選ばせるのは 2026-11-18 にやめた）
     return;
   }
-  const code = q.get("code"), name = q.get("name"), x = DB.現場.find(v => code && String(v.コード) === code) || (name && bestOf(DB.現場, v => siteScore(v, name))[0]);
+  // 同じ工事コードの現場と、同じ名前の現場が別にあるとき（例：正式名の「造成工事」と「阿久和南道路改良」。2026-11-21 ユーザー：押した所と違う現場が開いた）は、
+  // その日の日報が入っている方を先に。どちらにも無ければ 名前がそのまま同じ現場 → 工事コード → 名前の近い現場
+  const code = q.get("code"), name = q.get("name"), dk = q.get("d") || "";
+  const byCode = DB.現場.filter(v => code && String(v.コード) === code), byName = name ? bestOf(DB.現場, v => siteScore(v, name)) : [];
+  const x = [...byName.filter(v => siteScore(v, name) === 3), ...byCode].find(v => dk && hasData(v.日[dk])) || byName.find(v => siteScore(v, name) === 3) || byCode[0] || byName[0];
   if (!x) {   // 現場一覧を読む前かもしれないので、しばらく待ってから探し直す。見つからなければ知らせる
     if ((n || 0) < 6) setTimeout(() => linkEntry((n || 0) + 1), 2000);
     else toast(`「${name || code}」は詳細日報の現場にまだありません。「現場名を選ぶ」か「現場・名簿」で現場を足してから開いてください`, 8000);
