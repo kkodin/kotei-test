@@ -483,6 +483,7 @@ dialog .btns.hoisted { display: none; }
 #hSite { position: relative; }
 #hSite .honChk { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: normal; color: #444; cursor: pointer; user-select: none; }
 #hSite .honChk input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
+#hSite .formal { font-size: 12px; font-weight: normal; color: #555; margin-left: 8px; }   /* 現場コード（略称のうしろに） */
 #hSite .honChk.on { color: #0b4f7c; font-weight: bold; }
 @media print { .ttlRow .formSel:not(.on), #hSite .honChk:not(.on) { display: none; } .ttlRow .formSel input, #hSite .honChk input { display: none; } .ttlRow .formSel { border: 0; background: none; } }
 .ttlRow .copyWork { position: absolute; left: 0; top: 2px; font-size: 12px; letter-spacing: 0; font-weight: normal; }

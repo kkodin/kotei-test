@@ -118,9 +118,10 @@ async function linkPull(s, k) {
   if (site() !== s || UI.day !== k || !canEdit() || busyEditing()) return;
   const got = [];
   // 工事日報で押した行：その日の日報がまだ無いときだけ、取り込んだ行（配置表など）でも入れる。同じ現場の人（行.同行）も作業員に
+  let pickHon = false;   // 押した行が「本社（現場名）」：この現場の日報に（本社）✓ を付ける（2026-11-21）
   const E = LK.entry && LK.entry.site === s.id && LK.entry.k === k && LK.entry.rid && !day() ? LK.entry : null;
   docs.forEach(doc => (((doc.日 || {})[k] || {}).行 || []).forEach(r => {
-    const picked = E && r.id === E.rid;
+    const picked = E && r.id === E.rid; if (picked && r.行先 === "本社") pickHon = true;
     // 押した行は、名前が詳細日報の現場名とちがっても（阿久和南道路改良 ↔ 正式名の 造成工事。2026-11-21）この現場の行（開くときに現場を決めた行なので）
     if (!r.行先 || !(picked || sameSite(s, r)) || r.詳細 || r.書式 || (!picked && /^(jouyou|haichi):/.test(String(r.取込 || "")))) return;   // 書式のある行は、この用紙で書いた日報そのもの
     const h = parseInt(String(r.始め || "").split(":")[0], 10), sh = r.区分 === "夜" || (!r.区分 && (h >= 17 || h < 5)) ? "夜" : "昼";
@@ -130,6 +131,7 @@ async function linkPull(s, k) {
     (r.作業行 || []).forEach(l => { if (l.予定) got.push({ t: "予", key: "予|" + nk(l.予定), v: l.予定 }); if (l.報告) got.push({ t: "報", key: "報|" + nk(l.報告), v: l.報告, p: l.予定 }); });
     (r.機械 || []).forEach(v => got.push({ t: "機", key: "機|" + nk(v), v }));
   }));
+  if (pickHon && !(day() || {}).本社) { const d0 = ensureDay(); d0.本社 = true; d0.更新 = now(); save(); }
   const seen = (day() || {}).連携 || {}, news = got.filter((x, i) => !seen[x.key] && got.findIndex(y => y.key === x.key) === i);
   if (!news.length) return;
   const mach = news.some(x => x.t === "機") ? await kikaiDoc().catch(() => null) : null;

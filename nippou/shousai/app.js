@@ -1029,7 +1029,8 @@ function refreshSheet() {
   $("hGen").textContent = gen() ? genName(gen()) : "";   // 元請業者は現場名から出る（2026-11-18 ユーザー：元請は入れなくてよい。押しても何も起きない）
   // 現場名（押すと「現場名を選ぶ」）。右に（本社）✓（現場名が本社のときは出さない）
   { const hon = s && !isHonshaSite(s), on = !!(d && d.本社);
-    $("hSite").innerHTML = s ? esc(s.名前) + (hon ? `<label class="honChk${on ? " on" : ""}" title="本社勤務だが、この現場の仕事として扱う日に付けます（工事日報では「本社（${esc(s.略称 || s.名前)}）」）"><input type="checkbox" id="hHon"${on ? " checked" : ""}${RO ? " disabled" : ""}>（本社）</label>` : "") : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）"; }
+    // 2026-11-21 ユーザー：阿久和南道路改良を押したのに現場名が造成工事 → 画面は「略称＋現場コード」（正式名は出さない。印刷・Excel は今までどおり）
+    $("hSite").innerHTML = s ? esc(s.略称 || s.名前) + (s.コード ? `<small class="formal">${esc(s.コード)}</small>` : "") + (hon ? `<label class="honChk${on ? " on" : ""}" title="本社勤務だが、この現場の仕事として扱う日に付けます（工事日報では「本社（${esc(s.略称 || s.名前)}）」）"><input type="checkbox" id="hHon"${on ? " checked" : ""}${RO ? " disabled" : ""}>（本社）</label>` : "") : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）"; }
   $("hDate").textContent = jpDate(UI.day);
   // 常用 ✓（2026-11-18）。現場設定（工事日報で決めた区分）から入ったときは、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる。本社では出さない
   { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s);
