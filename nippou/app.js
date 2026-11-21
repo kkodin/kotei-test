@@ -900,9 +900,14 @@ async function renderList() {
     const places = [...new Set(rs.map(r => titleOf(r)).filter(Boolean))].join("　"), by = [...new Set(xs.filter(x => nk(x.who) !== nk(who)).map(x => x.who))];
     return `<tr data-k="${k}" class="${dayCls(k)}"><td class="num">${+k.slice(8)}</td><td>${WD[dow(k)]}</td><td>${esc(places)}${by.length ? `<br><small class="plan">記入：${esc(by.join("、"))}</small>` : ""}</td><td>${w.plan && w.t ? `<span class="plan">予定：${esc(w.t)}</span>` : esc(w.t)}${xs.some(x => !x.rep) ? `<span class="mk">書きかけ</span>` : ""}</td></tr>`;
   }).join("");
-  $("all").innerHTML = `<h3 class="lhead">${+m.slice(5)}月　<select id="lWho">${names.map(n => `<option${n === who ? " selected" : ""}>${esc(n)}</option>`).join("")}</select><small>◀▶ で月を移る・行を押すとその日</small></h3>
+  // 2026-11-21 ユーザー：◀▶ で月を移るのが動かない → やめて、表の見出しの上に月のタブ（前の5か月〜次の月）
+  const tm = monthOf(todayKey()), tabs = []; for (let i = -5; i <= 1; i++) { const d = dateOf(tm + "-01"); d.setMonth(d.getMonth() + i); tabs.push(monthOf(keyOf(d))); }
+  if (!tabs.includes(m)) { tabs.push(m); tabs.sort(); }
+  $("all").innerHTML = `<h3 class="lhead"><select id="lWho">${names.map(n => `<option${n === who ? " selected" : ""}>${esc(n)}</option>`).join("")}</select><small>行を押すとその日</small></h3>
+    <div class="tabs mtabs">${tabs.map(x => `<button type="button" data-lm="${x}"${x === m ? ` class="on"` : ""}>${x.slice(0, 4) !== tm.slice(0, 4) ? x.slice(0, 4) + "年" : ""}${+x.slice(5)}月</button>`).join("")}</div>
     <table class="list mlist"><thead><tr><th>日</th><th>曜日</th><th>現場</th><th>作業内容</th></tr></thead><tbody>${body}</tbody></table>`;
   $("lWho").onchange = () => { S.who = $("lWho").value; renderList(); };
+  $("all").querySelector(".mtabs").onclick = e => { const b = e.target.closest("[data-lm]"); if (!b || b.dataset.lm === m) return; S.day = b.dataset.lm === tm ? todayKey() : b.dataset.lm + "-01"; renderList(); };
   $("all").querySelector("tbody").onclick = e => { const tr = e.target.closest("tr[data-k]"); if (!tr) return; if (S.site) { S.view = "site"; S.tab = "day"; return setDay(tr.dataset.k); } openDay(tr.dataset.k, who); };   // Vr005：行を押すとその日の日報
 }
 // 私の月の集計（「…」→ この月の集計）

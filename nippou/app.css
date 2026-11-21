@@ -180,7 +180,9 @@ table.list tr.miss td:last-child::after { content: "未報告"; color: var(--war
 .dcol::-webkit-scrollbar { display: none; }
 .dcol > div { height: 44px; line-height: 44px; text-align: center; font-size: calc(24px * var(--fs)); scroll-snap-align: center; }
 /* 月の一覧（1日〜月末を縦に） */
-.lhead select { font-size: calc(16px * var(--fs)); padding: 4px 8px; max-width: 60vw; }
+.lhead select { font-size: calc(16px * var(--fs)); padding: 4px 8px; width: auto; min-width: 9em; max-width: 60vw; }   /* 2026-11-21 ユーザー：氏名の欄が広すぎる */
+.lhead small { margin-left: 10px; }
+.mtabs { flex-wrap: wrap; margin: 6px 0 8px; }
 table.mlist { background: #fff; border: 1px solid var(--line); }
 table.mlist th, table.mlist td { padding: 7px 6px; }
 table.mlist td:nth-child(1), table.mlist td:nth-child(2), table.mlist th:nth-child(1), table.mlist th:nth-child(2) { width: 2.2em; text-align: center; white-space: nowrap; }
