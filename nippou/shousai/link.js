@@ -389,8 +389,11 @@ function linkEntry(n) {
   history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
   // 工事日報で押した行（まだ日報の書式で書いていない行）：その人を記入者に、その行の中身を用紙に（2026-11-21 ユーザー）
   LK.entry = q.get("w") || q.get("rid") ? { site: x.id, k: q.get("d") || "", w: q.get("w") || "", rid: q.get("rid") || "", hon: q.get("hon") === "1", imp: q.get("imp") === "1" } : null;
-  if (LK.entry && LK.entry.imp) entryTanto();   // 配置表から取り込んだ行：記入者は配置表のその現場の担当者（writer.js）
   UI.gen = x.元請id; UI.site = x.id; if (q.get("d")) UI.day = q.get("d"); UI.pg = 0; saveUI(); showTab("sheet"); renderAll(); askForm();
+  // 配置表から取り込んだ行：記入者は配置表のその現場の担当者（writer.js の entryTanto）。
+  // link.js は writer.js より先に読むので、すぐ呼ぶと「entryTanto が無い」で止まり、上の現場の切り替えまで届かなかった
+  // （2026-11-21 ユーザー：配置表から取り込んだ行を押したのに、前に見ていた別の現場が開いた）。現場を切り替えてから、読み終わった後に呼ぶ
+  if (LK.entry && LK.entry.imp) setTimeout(() => { if (typeof entryTanto === "function") entryTanto(); }, 0);
 }
 linkEntry();
 linkPaint();
