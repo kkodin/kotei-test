@@ -554,7 +554,9 @@ async function openDay(k, who) {
 // 空いたます目・「＋ 予定・報告を登録」：日報を新しく書く（2026-11-16 ユーザー：自分の空いた所を押すと詳細日報）。
 // 自分（または人を決めないます目）なら、PC・タブレットは詳細日報の用紙（現場名を上の欄に入れる）、スマホは前のスケジュール登録の窓。
 // 他の人の日報は書けない（見るだけ）ので知らせる
-function newReport(k, n) {
+async function newReport(k, n) {
+  // 2026-11-21 ユーザー：あるところを押しているのに「まだありません」。帯の下の空いた所（同じます目）を押したとき → その人のその日の日報を開く
+  if (n && nk(n) !== nk(S.me.name) && evsOn(await docsFor([k]), k).some(x => membersOf(x).some(v => nk(v) === nk(n)))) return openDay(k, n);
   if (n && nk(n) !== nk(S.me.name)) { toast(`${n} さんの ${fmtDay(k)} の日報はまだありません。他の人の日報は、その人が書きます（同じ現場に行った人は、その人の日報を直せます）`, 6000); return; }
   if (window.innerWidth >= 760 || phoneView()) { location.href = detailUrl("", "", k); return; }   // スマホは日報スマホ（2026-11-19）
   editEv(k, null, n ? { person: n } : undefined);
