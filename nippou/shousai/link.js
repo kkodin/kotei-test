@@ -396,8 +396,10 @@ function linkEntry(n) {
   // （2026-11-21 ユーザー：配置表から取り込んだ行を押したのに、前に見ていた別の現場が開いた）。現場を切り替えてから、読み終わった後に呼ぶ
   // 開いた直後はサインインの準備が済んでいないことがあり、1回目が戻ってこない・担当者が分からないまま終わる（2026-11-21 確認）
   // → 1回目の終わりを待たずに、担当者が分かるまで2秒ごとに呼ぶ（8回まで）
-  const E0 = LK.entry, tanto = n => { if (LK.entry !== E0 || E0.tanto || typeof entryTanto !== "function") return;
-    entryTanto().catch(e => console.warn(e)); if (n < 8) setTimeout(() => tanto(n + 1), 2000); };
+  // writer.js がまだ読まれていない（entryTanto が無い）ときも、あきらめずに次の回へ
+  const E0 = LK.entry, tanto = n => { if (LK.entry !== E0 || E0.tanto) return;
+    if (typeof entryTanto === "function") entryTanto().catch(e => console.warn(e));
+    if (n < 8) setTimeout(() => tanto(n + 1), n ? 2000 : 500); };
   if (E0 && E0.imp) setTimeout(() => tanto(0), 0);
 }
 linkEntry();
