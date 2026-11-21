@@ -32,4 +32,26 @@ window.HX = window.HX || {};
     return [...out.values()].sort((a, b) => (order[a.区分] ?? 3) - (order[b.区分] ?? 3) || String(a.会社 || "").localeCompare(String(b.会社 || ""), "ja") || String(a.ふりがな || a.名前).localeCompare(String(b.ふりがな || b.名前), "ja"));
   };
   HX.activeOn = (p, ym) => !p.外す && !(p.最後の月 && ym > p.最後の月);
+
+  /* 現場・外注・機械・元請・工種・材料（2026-11-21 ユーザー：マスターを直す機能をランチャーに。人の名簿と同じ形）
+     元の一覧（毎朝作るもの・ほかのアプリが持つもの）は直さず、工程データ\マスタ\〈種類〉_手直し.json に直し・足した・外した を置く。
+       { 形式:"現場_手直し", 版:1, 行:{ "<キー>": { 〈項目〉…, 追加, 外す, メモ, 更新, 更新者 } } }
+       キー：元の行から決める（現場＝"c:"+工事コード・無ければ "n:"+名前、外注・元請＝"n:"+名前、機械＝"i:"+機械の id）。足した行は "a:"+作った時刻
+       工種・材料は元の一覧が無いので、手で足した行だけ（ファイルは 工種.json・材料.json）。
+     HX.mergeRows(元の行, 手直し, キーの関数, 項目) → [{ …, _k, 元, 直した:[項目], 追加, 外す }]（どのアプリも同じ結果にするため、合わせ方はここだけ） */
+  HX.normName = s => String(s ?? "").normalize("NFKC").replace(/株式会社|\(株\)|有限会社|\(有\)|合同会社|\(同\)/g, "").replace(/[\s　・()（）［］\[\]]/g, "").toLowerCase();
+  HX.mergeRows = function (base, fix, keyOf, fields) {
+    const out = new Map();
+    for (const r of base || []) { const k = keyOf(r); if (!k || out.has(k)) continue; out.set(k, { ...r, _k: k, 元: r.元 || [], 直した: [] }); }
+    for (const [k, f] of Object.entries((fix && fix.行) || {})) {
+      let r = out.get(k);
+      if (!r) { if (!f.追加) continue; r = { _k: k, 元: ["手で足した"], 直した: [], 追加: true }; out.set(k, r); }
+      for (const c of fields) if (f[c] != null && f[c] !== (r[c] ?? "")) { r[c] = f[c]; if (!r.追加) r.直した.push(c); }
+      if (f.外す) r.外す = true;
+      if (f.メモ) r.メモ = f.メモ;
+      r.更新 = f.更新; r.更新者 = f.更新者;
+    }
+    return [...out.values()];
+  };
+  HX.liveRows = rows => rows.filter(r => !r.外す);   // 候補に出してよい行
 })(window.HX);

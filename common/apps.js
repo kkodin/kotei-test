@@ -14,7 +14,8 @@ window.HX = window.HX || {};
     { id: "kikai", name: "機械予定", path: "kikai/", title: "自社機械稼働表" },
     { id: "bukai", name: "部会資料", path: "bukai/", title: "工事部会資料" },
     { id: "haichi", name: "配置表", path: "haichi/", title: "配置表（見るだけ）" },
-    { id: "meibo", name: "名簿", path: "meibo/", title: "人の名簿（確かめる・直す・足す・退職）" }
+    { id: "meibo", name: "名簿", path: "meibo/", title: "人の名簿（確かめる・直す・足す・退職）" },
+    { id: "master", name: "マスター", path: "master/", title: "マスター（現場・外注・機械・元請・工種・材料を直す・足す・外す）" }   // 2026-11-21
   ];
   // 日報スマホ（2026-11-18 試作 → 2026-11-19 ユーザー：本物の日報へ書くようにして本番へ）
   HX.APPS.push({ id: "spnippou", name: "日報スマホ", path: "sp-nippou/", title: "日報スマホ（スマホで日報を書く。PC の詳細日報と同じ日報）" });
